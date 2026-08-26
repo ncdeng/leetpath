@@ -14,7 +14,10 @@ services:
       context: ./backend
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
     user: "10001"
-    env_file: ${LEETPATH_ENV_FILE:-.env}
+    # required: false：无 .env 时仍可 `compose config`。生产必须自行填写 .env。
+    env_file:
+      - path: ${LEETPATH_ENV_FILE:-.env}
+        required: false
     environment:
       APP_VERSION: ${LEETPATH_VERSION:-dev}
     volumes:
@@ -49,7 +52,9 @@ services:
     user: "10001"
     group_add:
       - "${DOCKER_GID:-999}"
-    env_file: ${LEETPATH_ENV_FILE:-.env}
+    env_file:
+      - path: ${LEETPATH_ENV_FILE:-.env}
+        required: false
     environment:
       TMPDIR: /var/lib/leetpath/judge-tmp
     volumes:
@@ -74,7 +79,9 @@ services:
       context: ./backend
     command: ["python", "-m", "app.backup"]
     user: "10001"
-    env_file: ${LEETPATH_ENV_FILE:-.env}
+    env_file:
+      - path: ${LEETPATH_ENV_FILE:-.env}
+        required: false
     volumes:
       - leetpath-data:/app/data:ro
       - leetpath-backups:/app/backups

@@ -173,7 +173,7 @@ def set_track(
             db.commit()
         return {"status": "none"}
     if body.status not in TRACK_STATUSES:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="非法状态")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="非法状态")
     if track is None:
         track = JobTrack(user_id=user.id, job_id=job_id, status=body.status)
         db.add(track)

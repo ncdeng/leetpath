@@ -9,6 +9,12 @@ marked.use(
   }),
 )
 
+// 题面 / 题解 / AI 回复都走这里；外链必须带 noopener，避免 tabnabbing。
+DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+  if (node.tagName !== 'A' || !node.hasAttribute('href')) return
+  node.setAttribute('rel', 'noopener noreferrer')
+})
+
 export function filterSolutionMarkdown(markdown: string, lang: 'python3' | 'cpp'): string {
   if (!markdown) return ''
   

@@ -94,7 +94,7 @@ python -m judge.worker
    sed -i "s|^DOCKER_GID=.*|DOCKER_GID=$(stat -c %g /var/run/docker.sock)|" .env
    ```
 
-   将生成值写入 `SECRET_KEY`，同时填写 `PUBLIC_ORIGIN=https://learn.example.com` 和 `CLOUDFLARE_TUNNEL_TOKEN`。`DOCKER_GID` 由上面的 sed 命令自动填入（judge 容器以非 root 运行，需借宿主 docker 组访问 docker.sock）。`APP_ENV=production` 与 `COOKIE_SECURE=true` 必须保留；配置不安全时后端会拒绝启动。不要提交 `.env`。
+   将生成值写入 `SECRET_KEY`，同时填写 `PUBLIC_ORIGIN=https://learn.example.com` 和 `CLOUDFLARE_TUNNEL_TOKEN`。`DOCKER_GID` 由上面的 sed 命令自动填入（judge 容器以非 root 运行，需借宿主 docker 组访问 docker.sock）。`APP_ENV=production` 与 `COOKIE_SECURE=true` 必须保留；配置不安全时后端会拒绝启动。不要提交 `.env`。没有 `.env` 时 `docker compose --profile production config` 仍可解析（`env_file` 允许缺失）；真正启动生产仍须先复制并填写 `.env`。
 
 3. VPS 防火墙只保留必要的 SSH 入站，SSH 还应限制来源或使用密钥登录。应用所有容器都没有宿主端口映射，cloudflared 通过出站连接接入 Cloudflare。
 
