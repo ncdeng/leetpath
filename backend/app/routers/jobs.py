@@ -4,7 +4,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from pydantic import field_validator
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -135,6 +135,7 @@ def delete_job(
     job = db.get(Job, job_id)
     if job is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="岗位不存在")
+    db.execute(delete(JobTrack).where(JobTrack.job_id == job_id))
     db.delete(job)
     db.commit()
 

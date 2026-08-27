@@ -142,7 +142,7 @@ def list_banks(
         b = bank_map[q.bank]
         b["total"] += 1
         rec = user_records.get(q.id)
-        if rec:
+        if rec and rec.attempts_count > 0:
             b["answered"] += 1
             if rec.is_correct:
                 b["correct"] += 1
@@ -193,13 +193,13 @@ def list_questions(
         rec = user_records.get(q_item.id)
         if status == "wrong":
             # 错题本：做错过且未斩题（未被移除）
-            if rec and (not rec.is_correct) and (not rec.is_slashed):
+            if rec and rec.attempts_count > 0 and (not rec.is_correct) and (not rec.is_slashed):
                 filtered.append(q_item)
         elif status == "unanswered":
-            if not rec:
+            if rec is None or rec.attempts_count == 0:
                 filtered.append(q_item)
         elif status == "correct":
-            if rec and rec.is_correct:
+            if rec and rec.attempts_count > 0 and rec.is_correct:
                 filtered.append(q_item)
         elif status == "favorited":
             if rec and rec.is_favorite:
@@ -221,7 +221,7 @@ def list_questions(
     items = []
     for q_obj in paged:
         rec = user_records.get(q_obj.id)
-        is_answered = rec is not None
+        is_answered = rec is not None and rec.attempts_count > 0
         items.append(
             QuizQuestionItem(
                 id=q_obj.id,
@@ -232,8 +232,8 @@ def list_questions(
                 stem=q_obj.stem,
                 options=q_obj.options or {},
                 is_answered=is_answered,
-                is_correct=rec.is_correct if rec else None,
-                user_answer=rec.user_answer if rec else None,
+                is_correct=rec.is_correct if is_answered else None,
+                user_answer=rec.user_answer if is_answered else None,
                 is_favorite=rec.is_favorite if rec else False,
                 is_slashed=rec.is_slashed if rec else False,
                 wrong_count=rec.wrong_count if rec else 0,
@@ -263,7 +263,7 @@ def get_question(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="题目不存在")
 
     rec = db.get(QuizRecord, (user.id, question_id))
-    is_answered = rec is not None
+    is_answered = rec is not None and rec.attempts_count > 0
     return QuizQuestionItem(
         id=q_obj.id,
         bank=q_obj.bank,
@@ -273,8 +273,8 @@ def get_question(
         stem=q_obj.stem,
         options=q_obj.options or {},
         is_answered=is_answered,
-        is_correct=rec.is_correct if rec else None,
-        user_answer=rec.user_answer if rec else None,
+        is_correct=rec.is_correct if is_answered else None,
+        user_answer=rec.user_answer if is_answered else None,
         is_favorite=rec.is_favorite if rec else False,
         is_slashed=rec.is_slashed if rec else False,
         wrong_count=rec.wrong_count if rec else 0,
@@ -374,7 +374,6 @@ def toggle_favorite(
             rec.is_favorite = not rec.is_favorite
         else:
             rec.is_favorite = body.favorite
-        rec.updated_at = utcnow()
 
     db.commit()
     return {"id": question_id, "is_favorite": rec.is_favorite}
@@ -409,7 +408,6 @@ def slash_question(
         db.add(rec)
     else:
         rec.is_slashed = slashed
-        rec.updated_at = utcnow()
 
     db.commit()
     return {"id": question_id, "is_slashed": rec.is_slashed}
@@ -427,9 +425,10 @@ def get_quiz_stats(
         db.scalars(select(QuizRecord).where(QuizRecord.user_id == user.id)).all()
     )
 
-    answered_count = len(records)
-    correct_count = sum(1 for r in records if r.is_correct)
-    wrong_count = sum(1 for r in records if not r.is_correct and not r.is_slashed)
+    answered_records = [r for r in records if r.attempts_count > 0]
+    answered_count = len(answered_records)
+    correct_count = sum(1 for r in answered_records if r.is_correct)
+    wrong_count = sum(1 for r in answered_records if not r.is_correct and not r.is_slashed)
     slashed_count = sum(1 for r in records if r.is_slashed)
     favorite_count = sum(1 for r in records if r.is_favorite)
 
@@ -441,7 +440,7 @@ def get_quiz_stats(
     offset = timedelta(minutes=tz_offset)
     local_now = utcnow() + offset
     today_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0) - offset
-    today_count = sum(1 for r in records if r.updated_at >= today_start)
+    today_count = sum(1 for r in answered_records if r.updated_at >= today_start)
 
     return QuizStats(
         total_questions=total_q,

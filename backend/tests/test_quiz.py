@@ -273,6 +273,110 @@ def test_quiz_loader_partial_json_does_not_prune_other_banks(admin_client, tmp_p
         assert db.scalar(select(QuizQuestion).where(QuizQuestion.bank == "remap-only")) is not None
 
 
+def test_unanswered_favorite_and_slash_do_not_reveal_answers_or_pollute_stats(admin_client):
+    from datetime import timedelta
+
+    from sqlalchemy import select
+
+    from app import db as dbmod
+    from app.models import QuizRecord, User, utcnow
+
+    with dbmod.SessionLocal() as db:
+        admin = db.scalar(select(User).where(User.username == "admin"))
+        assert admin is not None
+        admin_id = admin.id
+        favorite = QuizQuestion(
+            bank="preference-only",
+            category="测试",
+            type="single",
+            ordinal=1,
+            stem="收藏后仍未作答？",
+            options={"A": "是", "B": "否"},
+            answer="A",
+            analysis="收藏不等于作答。",
+        )
+        slashed = QuizQuestion(
+            bank="preference-only",
+            category="测试",
+            type="judge",
+            ordinal=2,
+            stem="斩题后仍未作答？",
+            options={"A": "正确", "B": "错误"},
+            answer="正确",
+            analysis="斩题也不等于作答。",
+        )
+        db.add_all([favorite, slashed])
+        db.commit()
+        favorite_id, slashed_id = favorite.id, slashed.id
+
+    assert admin_client.post(f"/api/quiz/questions/{favorite_id}/favorite").status_code == 200
+    assert admin_client.post(f"/api/quiz/questions/{slashed_id}/slash").status_code == 200
+
+    favorite_item = admin_client.get(f"/api/quiz/questions/{favorite_id}").json()
+    slashed_item = admin_client.get(f"/api/quiz/questions/{slashed_id}").json()
+    for item in (favorite_item, slashed_item):
+        assert item["is_answered"] is False
+        assert item["is_correct"] is None
+        assert item["user_answer"] is None
+        assert item["answer"] is None
+        assert item["analysis"] is None
+    assert favorite_item["is_favorite"] is True
+    assert slashed_item["is_slashed"] is True
+
+    unanswered = admin_client.get(
+        "/api/quiz/questions?bank=preference-only&status=unanswered"
+    ).json()["items"]
+    assert {item["id"] for item in unanswered} == {favorite_id, slashed_id}
+    assert admin_client.get("/api/quiz/questions?bank=preference-only&status=wrong").json()["total"] == 0
+    assert admin_client.get("/api/quiz/questions?bank=preference-only&status=correct").json()["total"] == 0
+
+    bank = next(
+        item for item in admin_client.get("/api/quiz/banks").json()
+        if item["bank"] == "preference-only"
+    )
+    assert bank["answered"] == 0
+    assert bank["correct"] == 0
+    assert bank["wrong"] == 0
+
+    stats = admin_client.get("/api/quiz/stats").json()
+    assert stats["answered_count"] == 0
+    assert stats["correct_count"] == 0
+    assert stats["wrong_count"] == 0
+    assert stats["favorite_count"] == 1
+    assert stats["slashed_count"] == 1
+    assert stats["today_count"] == 0
+
+    answered = admin_client.post(
+        f"/api/quiz/questions/{favorite_id}/answer", json={"user_answer": "B"}
+    )
+    assert answered.status_code == 200
+    assert answered.json()["is_correct"] is False
+    refreshed = admin_client.get(f"/api/quiz/questions/{favorite_id}").json()
+    assert refreshed["is_answered"] is True
+    assert refreshed["answer"] == "A"
+    assert refreshed["is_favorite"] is True
+
+    answered_yesterday = utcnow() - timedelta(days=1)
+    with dbmod.SessionLocal() as db:
+        record = db.get(QuizRecord, (admin_id, favorite_id))
+        assert record is not None
+        record.updated_at = answered_yesterday
+        db.commit()
+
+    assert admin_client.post(
+        f"/api/quiz/questions/{favorite_id}/favorite", json={"favorite": False}
+    ).status_code == 200
+    assert admin_client.post(
+        f"/api/quiz/questions/{favorite_id}/slash", json={"slashed": True}
+    ).status_code == 200
+
+    with dbmod.SessionLocal() as db:
+        record = db.get(QuizRecord, (admin_id, favorite_id))
+        assert record is not None
+        assert record.updated_at == answered_yesterday
+    assert admin_client.get("/api/quiz/stats").json()["today_count"] == 0
+
+
 def test_quiz_loader_remaps_user_letters_without_resetting_records(admin_client, tmp_path):
     import json
 

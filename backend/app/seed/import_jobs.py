@@ -21,9 +21,12 @@ import sys
 from datetime import date, datetime
 from pathlib import Path
 
+from sqlalchemy import delete
+from sqlalchemy.orm import Session
+
 from app import db as dbmod
 from app.db import Base
-from app.models import Job
+from app.models import Job, JobTrack
 from app.urls import safe_https_url
 
 ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -89,6 +92,15 @@ def build_job(raw: dict, *, today: date) -> Job:
     )
 
 
+def replace_jobs(session: Session, raws: list[dict], *, today: date) -> int:
+    """全量替换岗位；旧岗位的用户投递记录随之清理。"""
+    session.execute(delete(JobTrack))
+    session.execute(delete(Job))
+    for raw in raws:
+        session.add(build_job(raw, today=today))
+    return len(raws)
+
+
 def main() -> None:
     if len(sys.argv) != 2:
         sys.exit("用法: python -m app.seed.import_jobs <jobs.json>")
@@ -103,10 +115,7 @@ def main() -> None:
     inserted = 0
     assert dbmod.SessionLocal is not None
     with dbmod.SessionLocal() as session:
-        session.query(Job).delete()
-        for raw in raws:
-            session.add(build_job(raw, today=today))
-            inserted += 1
+        inserted = replace_jobs(session, raws, today=today)
         session.commit()
     print(f"导入完成：{inserted} 条岗位（来源 {path.name}）")
 

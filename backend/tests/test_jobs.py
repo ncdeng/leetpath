@@ -100,6 +100,29 @@ def test_job_track_sync(admin_client, user_client):
     assert user_client.get("/api/jobs/track").json() == {}
 
 
+def test_deleting_job_removes_existing_tracks(admin_client, user_client):
+    admin_client.post("/api/auth/login", json={"username": "admin", "password": "password123"})
+    job = admin_client.post(
+        "/api/jobs", json={"company": "待删除公司", "position": "后端"}
+    ).json()
+    job_id = job["id"]
+
+    user_client.post("/api/auth/login", json={"username": "bob", "password": "password123"})
+    assert user_client.put(
+        f"/api/jobs/{job_id}/track", json={"status": "applied"}
+    ).status_code == 200
+
+    admin_client.post("/api/auth/login", json={"username": "admin", "password": "password123"})
+    assert admin_client.delete(f"/api/jobs/{job_id}").status_code == 204
+
+    from app import db as dbmod
+    from app.models import Job, JobTrack
+
+    with dbmod.SessionLocal() as db:
+        assert db.get(Job, job_id) is None
+        assert db.query(JobTrack).filter(JobTrack.job_id == job_id).count() == 0
+
+
 def test_job_urls_must_use_https(admin_client):
     base = {"company": "示例公司", "position": "开发", "tier": "small"}
     javascript = admin_client.post("/api/jobs", json={**base, "apply_url": "javascript:alert(1)"})
@@ -156,3 +179,33 @@ def test_job_import_discards_non_https_urls():
         today=date(2026, 1, 1),
     )
     assert job.apply_url is None
+
+
+def test_job_import_replaces_jobs_and_clears_tracks(admin_client):
+    from sqlalchemy import select
+
+    from app import db as dbmod
+    from app.models import Job, JobTrack, User
+    from app.seed.import_jobs import replace_jobs
+
+    with dbmod.SessionLocal() as db:
+        admin = db.scalar(select(User).where(User.username == "admin"))
+        assert admin is not None
+        old_job = Job(company="旧公司", position="旧岗位", tier="small", status="open")
+        db.add(old_job)
+        db.flush()
+        db.add(JobTrack(user_id=admin.id, job_id=old_job.id, status="applied"))
+        db.commit()
+        db.expunge_all()
+
+        inserted = replace_jobs(
+            db,
+            [{"company": "新公司", "role": "新岗位", "apply_url": "https://example.com"}],
+            today=date(2026, 1, 1),
+        )
+        db.commit()
+
+        assert inserted == 1
+        assert db.query(JobTrack).count() == 0
+        jobs = list(db.scalars(select(Job)).all())
+        assert [(job.company, job.position) for job in jobs] == [("新公司", "新岗位")]

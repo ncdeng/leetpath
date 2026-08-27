@@ -77,6 +77,12 @@ class JobData:
     leetcode_spec: dict | None
 
 
+@dataclass(frozen=True)
+class ContainerExitState:
+    exit_code: int
+    oom_killed: bool
+
+
 def normalize(s: str) -> str:
     """每行去行尾空白，整体去掉末尾空行（与 seed 校验器一致）。"""
     lines = [ln.rstrip() for ln in s.replace("\r\n", "\n").replace("\r", "\n").split("\n")]
@@ -115,11 +121,11 @@ def _force_rm_container(name: str) -> None:
         pass
 
 
-def _container_oom_killed(name: str) -> bool:
-    """评测容器不带 --rm，以便在退出码 137 时读取 OOMKilled，区分 TLE 与 MLE。"""
+def _inspect_container_exit_state(name: str) -> ContainerExitState | None:
+    """返回已实际运行并退出的容器状态；不存在、未启动或 inspect 失败时返回 None。"""
     try:
         r = subprocess.run(
-            [DOCKER_BIN, "inspect", "-f", "{{.State.OOMKilled}}", name],
+            [DOCKER_BIN, "inspect", "-f", "{{json .State}}", name],
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -127,8 +133,38 @@ def _container_oom_killed(name: str) -> bool:
             timeout=10,
         )
     except Exception:
-        return False
-    return r.returncode == 0 and r.stdout.strip().lower() == "true"
+        return None
+    if r.returncode != 0:
+        return None
+    try:
+        state = json.loads(r.stdout)
+        if not isinstance(state, dict) or state.get("Status") != "exited":
+            return None
+        exit_code = state.get("ExitCode")
+        if isinstance(exit_code, bool):
+            return None
+        return ContainerExitState(
+            exit_code=int(exit_code),
+            oom_killed=state.get("OOMKilled") is True,
+        )
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return None
+
+
+def _require_container_exit_state(
+    name: str,
+    result: subprocess.CompletedProcess[str],
+) -> ContainerExitState:
+    """确认非零 docker run 来自已退出容器，而不是 Docker 基础设施失败。"""
+    state = _inspect_container_exit_state(name)
+    if state is None or state.exit_code == 0:
+        raise JudgeInfraError(
+            _truncate(
+                (result.stderr or result.stdout or "docker run 失败").strip(),
+                COMPILE_OUTPUT_LIMIT,
+            )
+        )
+    return state
 
 
 def _run_docker(
@@ -377,7 +413,6 @@ def _compile_cpp(work_dir: Path) -> str | None:
     """成功返回 None；失败返回截断后的编译器输出。"""
     args = [
         "run",
-        "--rm",
         "--network", "none",
         "--read-only",
         "--tmpfs", "/tmp:size=32m",
@@ -393,37 +428,24 @@ def _compile_cpp(work_dir: Path) -> str | None:
         JUDGE_IMAGE_CPP,
         "g++", "-O2", "-std=c++17", "-o", "main_bin", "main.cpp",
     ]
-    r = _run_docker(
-        args,
-        timeout=COMPILE_TIMEOUT_S,
-        container_name=_container_name("ce", work_dir.name),
-    )
-    if r.returncode == -1:
-        return _truncate("编译超时", COMPILE_OUTPUT_LIMIT)
-    if r.returncode == OUTPUT_LIMIT_RETURN_CODE:
-        return "编译输出超过 1 MiB 限制"
-    if r.returncode != 0 and (r.returncode == 125 or _looks_like_docker_failure(r)):
-        raise JudgeInfraError(
-            _truncate((r.stderr or r.stdout or "docker run 失败").strip(), COMPILE_OUTPUT_LIMIT)
+    name = _container_name("ce", work_dir.name)
+    try:
+        r = _run_docker(
+            args,
+            timeout=COMPILE_TIMEOUT_S,
+            container_name=name,
         )
-    if r.returncode != 0:
-        msg = r.stderr if r.stderr.strip() else r.stdout
-        return _truncate(msg, COMPILE_OUTPUT_LIMIT)
-    return None
-
-
-def _looks_like_docker_failure(r: subprocess.CompletedProcess[str]) -> bool:
-    text = f"{r.stderr}\n{r.stdout}".lower()
-    needles = (
-        "unable to find image",
-        "cannot connect",
-        "error response from daemon",
-        "unknown flag",
-        "docker: ",
-        "is not running",
-        "no such image",
-    )
-    return any(n in text for n in needles)
+        if r.returncode == -1:
+            return _truncate("编译超时", COMPILE_OUTPUT_LIMIT)
+        if r.returncode == OUTPUT_LIMIT_RETURN_CODE:
+            return "编译输出超过 1 MiB 限制"
+        if r.returncode != 0:
+            _require_container_exit_state(name, r)
+            msg = r.stderr if r.stderr.strip() else r.stdout
+            return _truncate(msg, COMPILE_OUTPUT_LIMIT)
+        return None
+    finally:
+        _force_rm_container(name)
 
 
 def _run_case(
@@ -464,28 +486,25 @@ def _run_case(
         runtime_ms = max(0, int((time.perf_counter() - t0) * 1000))
         stdout = r.stdout or ""
         stderr = r.stderr or ""
-        oom = _container_oom_killed(name) if r.returncode != -1 else False
 
         if r.returncode == -1:
             return STATUS_TLE, runtime_ms, stdout, stderr
         if r.returncode == OUTPUT_LIMIT_RETURN_CODE:
             return STATUS_RE, runtime_ms, stdout, "程序输出超过 1 MiB 限制"
-        if r.returncode == 124:
+        if r.returncode == 0:
+            if normalize(stdout) == normalize(case.expected_output):
+                return STATUS_AC, runtime_ms, stdout, stderr
+            return STATUS_WA, runtime_ms, stdout, stderr
+
+        state = _require_container_exit_state(name, r)
+        if state.exit_code == 124:
             return STATUS_TLE, runtime_ms, stdout, stderr
-        if r.returncode == 137:
+        if state.exit_code == 137:
             # GNU timeout -s KILL 经 docker 常为 137 且 OOMKilled=false；cgroup OOM 为 137 且 OOMKilled=true。
-            if oom:
+            if state.oom_killed:
                 return STATUS_MLE, runtime_ms, stdout, stderr
             return STATUS_TLE, runtime_ms, stdout, stderr
-        if r.returncode != 0:
-            if r.returncode == 125 or _looks_like_docker_failure(r):
-                raise JudgeInfraError(
-                    _truncate((stderr or stdout or "docker run 失败").strip(), COMPILE_OUTPUT_LIMIT)
-                )
-            return STATUS_RE, runtime_ms, stdout, stderr
-        if normalize(stdout) == normalize(case.expected_output):
-            return STATUS_AC, runtime_ms, stdout, stderr
-        return STATUS_WA, runtime_ms, stdout, stderr
+        return STATUS_RE, runtime_ms, stdout, stderr
     finally:
         _force_rm_container(name)
 
