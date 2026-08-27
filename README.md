@@ -102,6 +102,7 @@ python -m judge.worker
 
    ```bash
    sudo install -d -o 10001 -g 10001 /var/lib/leetpath/judge-tmp
+   export LEETPATH_VERSION="$(cat VERSION)"
    docker compose build judge-python judge-cpp
    docker compose --profile production up -d --build
    ```
@@ -138,10 +139,9 @@ AI_ALLOWED_HOSTS=api.antithor.asia,api.deepseek.com
 本地发版（有新功能要上生产时）：
 
 ```bash
-# VERSION 已改好则直接打标签；否则用脚本改 VERSION 并提交
-# scripts/release.sh 0.3.1
-git tag v0.3.1
-git push && git push origin v0.3.1
+# 先提交全部代码改动并确认工作区干净；脚本更新 VERSION（若需要）并打 tag
+scripts/release.sh 0.3.2
+git push && git push origin v0.3.2
 ```
 
 服务器上（在有 `docker-compose.yml` 和 `.env` 的仓库根目录）：
@@ -154,24 +154,24 @@ from app.backup import backup_once
 print(backup_once(Path('/app/data/leetpath.db'), Path('/app/backups')))
 "
 
-# 2. 拉代码、按 VERSION 构建并滚动重启；脚本末尾会导入八股
-#    （按选项原文重映射作答字母，对错/收藏/斩题保留，不清 quiz_records）
+# 2. 拉代码、按 VERSION 构建并重启；脚本末尾会同步算法题与八股
+#    （保留用户、提交、草稿和记忆；八股按选项原文重映射作答字母）
 git pull --ff-only
 scripts/upgrade.sh
 ```
 
-`upgrade.sh` 成功后 `/api/health` 的 `version` 应等于仓库里的 `VERSION`。账号、提交记录、草稿都还在。八股导入也可在管理页点「重新导入题库与八股」。
+`upgrade.sh` 会强制核对 `/api/health` 的 `version` 与仓库 `VERSION`，随后幂等同步算法题与八股。账号、提交记录、草稿和学习记录都会保留；也可在管理页手动点「重新导入题库与八股」。
 
 若 `git pull --ff-only` 因历史改写失败，在确认没有未提交的服务器改动后：`git fetch origin && git reset --hard origin/main`（`.env` 不在 git 里，不会被删）。
 
 回滚到上一版（同样不碰数据库）：
 
 ```bash
-git checkout v0.2.2
-scripts/upgrade.sh
+git switch main && git pull --ff-only
+scripts/upgrade.sh v0.2.2
 ```
 
-回到最新：`git checkout main && git pull --ff-only && scripts/upgrade.sh`。
+回滚命令会先检查工作区是否干净，再切到目标 tag/ref 并部署；脚本结束后仓库保持 detached HEAD。回到最新：`git switch main && git pull --ff-only && scripts/upgrade.sh`。
 
 **这些才会丢掉用户数据，不要用：**
 
@@ -182,7 +182,7 @@ scripts/upgrade.sh
 
 `docker compose --profile production down`（**没有** `-v`）再 `up -d` 是安全的，库还在。
 
-管理页「重新导入种子 / 八股」会更新题面和选项，**不会删用户表**。但八股若打乱了选项字母，用户以前存的「我选了 B」会对到新文案上。升代码不必点导入；只有要改题库内容时再点。
+管理页「重新导入种子 / 八股」会更新题面和选项，**不会删用户表**。升级脚本已经自动执行同一套幂等导入；八股会按选项原文重映射旧作答，保留对错、收藏和斩题状态。
 
 判题沙箱镜像（`leetpath-judge-python` / `leetpath-judge-cpp`）默认不随 `upgrade.sh` 重建。改了 `backend/judge/Dockerfile.*` 时再手动：
 

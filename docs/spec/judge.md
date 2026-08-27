@@ -27,14 +27,14 @@ UPDATE submissions SET status='judging' WHERE id=:id AND status='pending'
 2. **cpp 先编译**（独立容器，输出到该目录）：
 
    ```
-   docker run --rm --network none --read-only --tmpfs /tmp:size=32m \
+   docker run --network none --read-only --tmpfs /tmp:size=32m \
      --memory 512m --memory-swap 512m --cpus 1 --pids-limit 64 \
      --cap-drop ALL --security-opt no-new-privileges --user 65534:65534 \
      -v <dir>:/work -w /work leetpath-judge-cpp \
      g++ -O2 -std=c++17 -o main_bin main.cpp
    ```
 
-   非零退出 → 整题 `CE`，stderr 截断 4000 字符存入 `compile_output`，结束。
+   编译容器与运行容器一样使用唯一名称，退出后先 inspect、再在 finally 中强制删除。能确认编译器已运行且非零退出时 → 整题 `CE`，stderr 截断 4000 字符存入 `compile_output`；无法确认容器实际退出时按 Docker 基础设施异常记 `IE`。
 3. **逐用例运行**（每个用例一个一次性容器，按 ordinal 升序）：
 
    ```
@@ -47,12 +47,13 @@ UPDATE submissions SET status='judging' WHERE id=:id AND status='pending'
 
    - python3: image=`leetpath-judge-python`, cmd=`python3 main.py`
    - cpp: image=`leetpath-judge-cpp`, cmd=`./main_bin`（注意 main_bin 在 /work 下，--read-only 不影响执行）
-   - 运行容器不使用 `--rm`，以便检查 `OOMKilled`；worker 在 finally 中强制删除容器。
+   - 容器不使用 `--rm`，以便通过 `docker inspect -f '{{json .State}}'` 读取可信的 `Status`、`ExitCode` 和 `OOMKilled`；worker 在 finally 中强制删除容器。
    - `<limit_s>` = ceil(time_limit_ms/1000)，另加外层进程超时 `limit_s+15` 兜底（含容器启动开销），外层超时视为 TLE。
 4. 每个用例判定：
-   - 退出码 124 记 `TLE`；137 时根据 Docker `OOMKilled` 区分 `MLE`，否则记 `TLE`
+   - 非零 `docker run` 必须先确认容器状态为 `exited`；容器 ExitCode 124 记 `TLE`，137 时根据 `OOMKilled` 区分 `MLE`，否则记 `TLE`
    - stdout + stderr 合计超过 1 MiB 时立即终止容器并记 `RE`；编译输出超限记 `CE`
    - 其他非零退出 → `RE`（stderr 截断 500 字符记入该用例 detail）
+   - stdout/stderr 是用户程序或编译器可控内容，不得靠其中的 `docker:`、`cannot connect` 等文本判断基础设施故障
    - 零退出 → 比对 stdout 与 expected_output：**规范化**（每行去行尾空白、整体去末尾空行）后相等 → `AC`，否则 `WA`（记录实际输出截断 500 字符）
    - 单用例 runtime_ms：容器运行的外层 wall time（近似值，含启动开销，文档注明）
 5. 整题状态：全部 AC → `AC`；否则取**第一个非 AC 用例**的状态。遇到非 AC 即停止后续用例（fail-fast）。
@@ -64,7 +65,7 @@ UPDATE submissions SET status='judging' WHERE id=:id AND status='pending'
    ```
 
    - `input/expected/output` 仅样例用例（is_sample=true）包含，且各截断 1000 字符；隐藏用例只有 ordinal/is_sample/status/runtime_ms（+RE 时的 stderr）。
-7. 任何基础设施异常（docker 不可用、镜像缺失等）→ 状态 `IE`，异常信息入 `compile_output`。**异常不能使 worker 退出**，记录后继续轮询。
+7. 任何基础设施异常（docker 不可用、镜像缺失、非零 `docker run` 且没有可验证的已退出容器等）→ 状态 `IE`，异常信息入 `compile_output`。**异常不能使 worker 退出**，记录后继续轮询。
 8. 清理临时目录（finally）。
 
 ## 配置（环境变量）

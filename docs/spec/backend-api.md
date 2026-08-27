@@ -27,6 +27,10 @@
 - `Submission`: id, user_id(FK, 索引), problem_id(FK), language(`python3|cpp`), io_mode(`acm|leetcode`, 默认 `acm`), code(Text), status(默认 `pending`, 索引), detail(JSON, 可空), compile_output(Text, 可空), runtime_ms(int, 可空), created_at(索引)
 - `Draft`: 联合主键(user_id, problem_id, language)；code(Text), updated_at
 - `Job`: id, company, position, batch(可空, 如 `2026秋招`), open_at(Date, 可空), deadline_at(Date, 可空, 索引), jd_text(Text, 可空), apply_url(可空), status(默认 `open`, 另有 `closed`), created_at
+- `JobTrack`: 联合主键(user_id, job_id)，status(`applied|test|interview|offer|rejected`), updated_at；`none` 只作为清除记录的 API 输入值
+- `QuizQuestion`: id, bank, category, type(`single|multiple|judge`), ordinal, stem, options(JSON), answer, analysis, created_at
+- `QuizRecord`: 联合主键(user_id, question_id)，最后答案/对错、attempts_count、wrong_count、收藏、斩题与最后作答时间
+- `QuizSolveEvent`: 联合主键(user_id, question_id)，记录首次答对时间
 
 提交状态枚举：`pending | judging | AC | WA | TLE | MLE | CE | RE | IE`。
 
@@ -65,7 +69,15 @@
 ### `app/routers/jobs.py`
 
 - `GET /api/jobs` → 全部，按 deadline_at 升序（NULL 最后），返回完整字段 + `days_left`（可空）。`apply_url` 只允许有效 HTTPS；历史非法值在输出边界清空。
-- 管理员：`POST /api/jobs`、`PUT /api/jobs/{id}`、`DELETE /api/jobs/{id}`（204）。非管理员 403。
+- `GET /api/jobs/track` → 当前用户 `{job_id: status}` 映射；`PUT /api/jobs/{id}/track` upsert 进度，`status=none` 时删除该记录。
+- 管理员：`POST /api/jobs`、`PUT /api/jobs/{id}`、`DELETE /api/jobs/{id}`（204）。删除岗位前必须删除关联 `JobTrack`，避免 SQLite 外键失败；非管理员 403。
+
+### `app/routers/quiz.py`
+
+- `GET /api/quiz/banks`、`GET /api/quiz/questions`、`GET /api/quiz/questions/{id}` 提供专题统计、筛选分页和题目详情。
+- 只有 `attempts_count > 0` 才算已作答。收藏或斩题可以创建偏好记录，但题目仍属于 `unanswered`，不得返回标准答案、解析、用户答案或对错，也不得计入专题和总览的作答/正确/错误/今日统计。
+- `POST /api/quiz/questions/{id}/answer` 提交并判分，增加作答次数和错误次数，返回标准答案与解析；只有实际提交答案才更新用于“今日刷题”的时间。
+- `POST /api/quiz/questions/{id}/favorite` 与 `/slash` 切换收藏、斩题状态，不修改最后作答时间。`GET /api/quiz/stats?tz_offset=` 按客户端时区返回总题数、作答、正确、错题、收藏、斩题、正确率和今日作答数。
 
 ### `app/routers/links.py`
 
@@ -83,6 +95,7 @@
 - 扫描 `app/seed/problems/*/`，解析 `meta.toml`（tomllib）+ `statement.md` + `tests/NNN.in|NNN.out`。格式详见 `seed-format.md`。
 - 按 slug upsert：存在则更新字段并**删除旧 testcases 后重建**；不存在则插入。`python -m app.seed.loader` 可独立运行，也供 admin 路由调用。打印导入数量。
 - meta.toml 中 `samples = [1, 2]` 指定哪些用例公开。
+- `python -m app.seed.import_jobs <jobs.json>` 是岗位全量替换：先删除全部 `JobTrack`，再替换岗位，防止旧岗位 ID 对应到新数据。
 
 ## 测试（`backend/tests/`）
 

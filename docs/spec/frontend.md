@@ -34,8 +34,8 @@
 - 编辑器 `Editor.vue`：CodeMirror，行号、4 空格缩进、语言随选择切换（python3/cpp）、主题跟随系统深浅色；字号移动端 ≥14px 防 iOS 缩放。
 - 语言切换下拉：`Python3` / `C++`。切换时保存当前草稿、加载目标语言草稿。
 - 评测模式切换：`ACM` / `力扣`。力扣模式编辑器只放 `class Solution`（或 LRU/Trie 等设计类），签名与力扣一致；两种模式草稿分开保存，偏好写入 localStorage。
-- **草稿**：编辑器内容变化防抖 1000ms → `PUT /api/drafts/{slug}`；状态栏显示`已保存 HH:mm:ss`或`保存中…`。进入页面 `GET /api/drafts/{slug}?language=` 恢复。
-- **提交**：按钮`提交评测`→ `POST /api/submissions`；之后按钮禁用并每 800ms 轮询 `GET /api/submissions/{id}`（终态或 90s 超时停止）。
+- **草稿**：编辑器内容变化防抖 1000ms → `PUT /api/drafts/{slug}`；每次保存必须冻结当时的 `slug + language + io_mode + code`，同一编辑器的请求串行执行，保存期间产生的新修改继续排队。进入页面用同一冻结上下文请求 `GET /api/drafts/{slug}?language=&io_mode=`；切题或切换语言/模式前必须先保存旧上下文，失败时保留脏状态并取消切换。异步加载结果只能写回发起请求时的题目上下文。状态栏显示`已保存 HH:mm`、`保存中…`或可重试的失败提示。
+- **提交**：按钮`提交评测`→ `POST /api/submissions`；提交体使用点击瞬间的冻结草稿快照，等待草稿保存期间按钮保持禁用，避免双击重复提交。之后每 800ms 轮询 `GET /api/submissions/{id}`（终态或 90s 超时停止）；切题时取消当前页面的旧轮询并恢复新题提交按钮，服务端判题仍继续运行，旧响应不得覆盖新题结果面板。
 - **结果面板**：状态大徽章 + 总耗时；逐用例列表（`#1 样例 AC 12ms`）；样例用例可展开看 输入/期望/你的输出；CE 展示 compile_output 代码块。隐藏用例只显示状态。
 - 历史：题面 tab 内底部"我的提交"列表（`GET /api/submissions?problem_slug=`），点开展示 code（只读 CodeMirror 或 pre）。
 
@@ -47,4 +47,4 @@
 
 ## 构建
 
-`npm run build` 产物 `dist/`；`npm run typecheck`（vue-tsc）必须通过。Dockerfile：node:22 build → nginx:alpine 托管（nginx 配置由仓库 `deploy/nginx.conf` 提供，SPA history fallback + /api 反代）。
+`npm test`、`npm run typecheck`（vue-tsc）与 `npm run build` 必须通过，构建产物为 `dist/`。Dockerfile：node:22 build → nginx:alpine 托管（nginx 配置由仓库 `deploy/nginx.conf` 提供，SPA history fallback + /api 反代）。
