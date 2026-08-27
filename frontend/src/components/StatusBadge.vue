@@ -1,12 +1,13 @@
 <template>
-  <span class="status-pill" :class="`st-${status}`">
-    <span v-if="status === 'pending' || status === 'judging'" class="spinner"></span>
+  <span class="status-badge" :class="statusClass">
+    <span v-if="isPending" class="spinner" aria-hidden="true"></span>
     {{ label }}
   </span>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { isPendingSubmissionStatus, submissionStatusClass } from '../submissionStatus'
 import type { SubmissionStatus } from '../types'
 
 const props = defineProps<{ status: SubmissionStatus }>()
@@ -24,4 +25,6 @@ const LABELS: Record<SubmissionStatus, string> = {
 }
 
 const label = computed(() => LABELS[props.status] ?? props.status)
+const statusClass = computed(() => submissionStatusClass(props.status))
+const isPending = computed(() => isPendingSubmissionStatus(props.status))
 </script>

@@ -16,7 +16,7 @@ import {
   saveLauncherChrome,
   bottomClearancePx,
   clampPoint,
-} from './aiLauncherChrome'
+} from './aiLauncherChrome.ts'
 
 const IPHONE = { width: 390, height: 844 }
 const DESKTOP = { width: 1440, height: 900 }

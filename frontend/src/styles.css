@@ -549,7 +549,20 @@ code, pre, .mono { font-family: var(--mono); }
 .status-badge.st-mle { color: var(--purple); background: var(--purple-soft); }
 .status-badge.st-ce { color: var(--text-dim); background: var(--surface-2); }
 .status-badge.st-re { color: var(--red); background: var(--red-soft); }
+.status-badge.st-ie { color: var(--purple); background: var(--purple-soft); }
 .status-badge.st-pending, .status-badge.st-judging { color: var(--accent); background: var(--accent-soft); }
+.status-badge .spinner {
+  width: 10px;
+  height: 10px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: status-spin 0.75s linear infinite;
+}
+
+@keyframes status-spin {
+  to { transform: rotate(360deg); }
+}
 
 /* 顶栏 (Topbar) - 中性毛玻璃 */
 .topbar {

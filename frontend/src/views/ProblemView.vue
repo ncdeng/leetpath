@@ -197,7 +197,7 @@
                   <div class="tc-row" :style="tc.is_sample ? 'cursor:pointer' : ''" @click="tc.is_sample && toggleTc(tc.ordinal)">
                     <span class="tc-ord">#{{ tc.ordinal }}</span>
                     <span v-if="tc.is_sample" class="tc-sample">样例</span>
-                    <span class="status-pill" :class="`st-${tc.status}`" style="padding:1px 10px;font-size:12px">{{ tc.status }}</span>
+                    <span class="status-badge" :class="submissionStatusClass(tc.status)" style="padding:1px 10px;font-size:12px">{{ tc.status }}</span>
                     <span class="tc-time">{{ tc.runtime_ms ?? '-' }}ms</span>
                   </div>
                   <div v-if="tc.is_sample && expandedTc.has(tc.ordinal)" class="tc-detail">
@@ -233,11 +233,28 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { onBeforeRouteUpdate, useRoute } from 'vue-router'
 import { api } from '../api'
 import Editor from '../components/Editor.vue'
 import Skeleton from '../components/Skeleton.vue'
 import StatusBadge from '../components/StatusBadge.vue'
+import {
+  canAcceptSubmissionPoll,
+  canCommitDraftTransition,
+  canCommitProblemDraft,
+  canCommitProblemLoad,
+  flushUntilStable,
+  isDraftRevisionCurrent,
+} from '../problemConcurrency'
+import {
+  createDraftContext,
+  createDraftSnapshot,
+  draftLoadPath,
+  draftSaveRequest,
+  sameDraftContext,
+  type DraftContext,
+} from '../problemDraft'
+import { submissionStatusClass } from '../submissionStatus'
 import { useToast } from '../stores/toast'
 import { useIoModePref, useLangPref } from '../stores/pref'
 import { useStudyPlan } from '../stores/plan'
@@ -361,10 +378,26 @@ const expandedTc = ref(new Set<number>())
 const expandedHistory = ref(new Set<number>())
 const historyCode = ref<Record<number, string>>({})
 
+interface SaveInFlight {
+  readonly context: Readonly<DraftContext>
+  readonly revision: number
+  readonly promise: Promise<boolean>
+}
+
+type DraftTransitionResult = 'applied' | 'superseded' | 'failed'
+
 let saveTimer: ReturnType<typeof setTimeout> | null = null
+let saveInFlight: SaveInFlight | null = null
 let pollTimer: ReturnType<typeof setTimeout> | null = null
-let pollDeadline = 0
+let pollEpoch = 0
+let problemLoadGeneration = 0
+let draftTransitionGeneration = 0
+let editorRevision = 0
 let dirty = false
+let applyingEditorCode = false
+let activeDraftContext: Readonly<DraftContext> | null = null
+let desiredLanguage: Language = langPref.value
+let desiredIoMode: IoMode = ioMode.value
 
 // ACM 极速模板
 const DEFAULT_TEMPLATES: Record<Language, string> = {
@@ -490,6 +523,8 @@ function toggleTc(ordinal: number) {
 }
 
 async function toggleHistory(id: number) {
+  const problemSlug = slug.value
+  const generation = problemLoadGeneration
   const s = new Set(expandedHistory.value)
   if (s.has(id)) {
     s.delete(id)
@@ -497,22 +532,46 @@ async function toggleHistory(id: number) {
     s.add(id)
     if (!historyCode.value[id]) {
       const full = await api.get<Submission>(`/api/submissions/${id}`)
+      if (!isCurrentProblemLoad(generation, problemSlug)) return
       historyCode.value = { ...historyCode.value, [id]: full.code ?? '' }
     }
   }
+  if (!isCurrentProblemLoad(generation, problemSlug)) return
   expandedHistory.value = s
 }
 
-function loadCodeIntoEditor(historySnippet: string, lang: Language, mode: IoMode = 'acm') {
+async function loadCodeIntoEditor(historySnippet: string, lang: Language, mode: IoMode = 'acm') {
   if (!historySnippet) return
   if (confirm('确认将此历史提交代码载入到编辑器中吗？当前未保存的修改将被覆盖。')) {
-    if (language.value !== lang) setLang(lang)
-    if (ioMode.value !== mode) setIoMode(mode)
-    ioMode.value = mode
-    code.value = historySnippet
-    dirty = true
-    saveDraftNow()
-    toast.success('已载入历史提交代码')
+    const sourceContext = activeDraftContext
+    const transitionGeneration = ++draftTransitionGeneration
+    if (!(await flushDraftBeforeTransition())) {
+      toast.error('当前草稿保存失败，请重试后再载入历史代码')
+      return
+    }
+    if (
+      transitionGeneration !== draftTransitionGeneration
+      || !sourceContext
+      || !sameDraftContext(sourceContext, activeDraftContext)
+      || sourceContext.slug !== slug.value
+    ) return
+
+    const targetContext = createDraftContext(
+      sourceContext.slug,
+      lang,
+      mode,
+    )
+    desiredLanguage = lang
+    desiredIoMode = mode
+    applyEditorCode(targetContext, historySnippet, true)
+    setLang(lang)
+    setIoMode(mode)
+
+    if (await saveDraftOnce()) {
+      toast.success('已载入并保存历史提交代码')
+    } else {
+      toast.error('历史代码已载入，草稿保存失败，可按 Ctrl+S 重试')
+    }
   }
 }
 
@@ -522,181 +581,470 @@ function copyCode(content: string) {
   toast.success('代码已复制到剪贴板')
 }
 
-function defaultCodeFor(lang: Language, mode: IoMode): string {
+function defaultCodeFor(
+  problemDetail: ProblemDetail | null,
+  lang: Language,
+  mode: IoMode,
+): string {
   if (mode === 'leetcode') {
-    return problem.value?.leetcode_starters?.[lang] || ''
+    return problemDetail?.leetcode_starters?.[lang] || ''
   }
   return DEFAULT_TEMPLATES[lang] || ''
 }
 
 function confirmResetCode() {
   if (confirm('确定要重置当前代码吗？将恢复为初始默认模板。')) {
-    code.value = defaultCodeFor(language.value, ioMode.value)
-    dirty = true
-    saveDraftNow()
+    code.value = defaultCodeFor(problem.value, language.value, ioMode.value)
+    void saveDraftOnce()
     toast.info(ioMode.value === 'leetcode' ? '已重置为力扣函数模板' : '代码已重置为初始模板')
   }
 }
 
-async function loadSolution() {
-  if (solutionMd.value) return
-  solutionLoading.value = true
+function isCurrentProblemLoad(generation: number, problemSlug: string): boolean {
+  return canCommitProblemLoad(
+    generation,
+    problemLoadGeneration,
+    slug.value,
+    problemSlug,
+  )
+}
+
+async function fetchSolution(problemSlug: string): Promise<string> {
   try {
     const res = await api.get<{ slug: string; solution_md: string }>(
-      `/api/problems/${slug.value}/solution`,
+      `/api/problems/${problemSlug}/solution`,
     )
-    solutionMd.value = res.solution_md
+    return res.solution_md
   } catch {
-    solutionMd.value = ''
-  } finally {
-    solutionLoading.value = false
+    return ''
   }
 }
 
-async function saveDraftNow() {
-  if (!problem.value || !dirty) return
+function fetchDraft(context: DraftContext): Promise<Draft> {
+  return api.get<Draft>(draftLoadPath(context))
+}
+
+function fetchHistory(problemSlug: string): Promise<Submission[]> {
+  return api.get<Submission[]>(`/api/submissions?problem_slug=${problemSlug}&limit=20`)
+}
+
+async function fetchDesiredPageDraft(
+  problemSlug: string,
+  problemGeneration: number,
+): Promise<{ context: Readonly<DraftContext>; draft: Draft } | null> {
+  while (isCurrentProblemLoad(problemGeneration, problemSlug)) {
+    const context = desiredDraftContextForSlug(problemSlug)
+    try {
+      const draft = await fetchDraft(context)
+      if (!isCurrentProblemLoad(problemGeneration, problemSlug)) return null
+      if (sameDraftContext(context, desiredDraftContextForSlug(problemSlug))) {
+        return { context, draft }
+      }
+    } catch (error) {
+      if (!isCurrentProblemLoad(problemGeneration, problemSlug)) return null
+      if (sameDraftContext(context, desiredDraftContextForSlug(problemSlug))) throw error
+    }
+  }
+  return null
+}
+
+function clearSaveTimer() {
+  if (!saveTimer) return
+  clearTimeout(saveTimer)
+  saveTimer = null
+}
+
+function applyEditorCode(context: DraftContext, nextCode: string, shouldBeDirty: boolean) {
+  clearSaveTimer()
+  activeDraftContext = createDraftContext(context.slug, context.language, context.ioMode)
+  language.value = context.language
+  ioMode.value = context.ioMode
+  applyingEditorCode = true
+  code.value = nextCode
+  applyingEditorCode = false
+  editorRevision += 1
+  dirty = shouldBeDirty
+}
+
+async function saveDraftOnce(): Promise<boolean> {
+  while (saveInFlight) {
+    const pendingSave = saveInFlight
+    const succeeded = await pendingSave.promise
+    if (saveInFlight === pendingSave) saveInFlight = null
+    if (!succeeded) return false
+  }
+
+  if (!activeDraftContext || !dirty) return true
+
+  const context = activeDraftContext
+  const revision = editorRevision
+  const snapshot = createDraftSnapshot(context, code.value)
+  const request = draftSaveRequest(snapshot)
   dirty = false
   saveHint.value = '保存中…'
-  try {
-    await api.put(`/api/drafts/${slug.value}`, {
-      language: language.value,
-      io_mode: ioMode.value,
-      code: code.value,
-    })
-    const d = new Date()
-    saveHint.value = `已保存 ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-  } catch {
-    saveHint.value = '保存失败'
-  }
+
+  const promise = (async () => {
+    try {
+      await api.put(request.path, request.body)
+      if (sameDraftContext(activeDraftContext, context)) {
+        if (!isDraftRevisionCurrent(context, activeDraftContext, revision, editorRevision)) {
+          dirty = true
+        }
+        const d = new Date()
+        saveHint.value = dirty
+          ? '有未保存修改'
+          : `已保存 ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+      }
+      return true
+    } catch {
+      if (sameDraftContext(activeDraftContext, context)) {
+        dirty = true
+        saveHint.value = '保存失败，可重试'
+      }
+      return false
+    }
+  })()
+
+  const pendingSave: SaveInFlight = { context, revision, promise }
+  saveInFlight = pendingSave
+  const succeeded = await promise
+  if (saveInFlight === pendingSave) saveInFlight = null
+  return succeeded
+}
+
+async function flushDraftBeforeTransition(): Promise<boolean> {
+  return flushUntilStable(
+    async () => {
+      clearSaveTimer()
+      return saveDraftOnce()
+    },
+    () => !activeDraftContext || (!saveInFlight && !dirty),
+  )
 }
 
 watch(code, () => {
+  if (applyingEditorCode) return
+  editorRevision += 1
   dirty = true
-  if (saveTimer) clearTimeout(saveTimer)
-  saveTimer = setTimeout(saveDraftNow, 1000)
-})
+  clearSaveTimer()
+  saveTimer = setTimeout(() => {
+    saveTimer = null
+    void saveDraftOnce()
+  }, 1000)
+}, { flush: 'sync' })
 
-async function loadDraft() {
-  const draft = await api.get<Draft>(
-    `/api/drafts/${slug.value}?language=${language.value}&io_mode=${ioMode.value}`,
-  )
-  if (draft.code && draft.code.trim().length > 0) {
-    code.value = draft.code
-  } else {
-    code.value = defaultCodeFor(language.value, ioMode.value)
-  }
-  dirty = false
+function applyLoadedDraft(
+  context: DraftContext,
+  draft: Draft,
+  problemDetail: ProblemDetail,
+) {
+  const nextCode = draft.code && draft.code.trim().length > 0
+    ? draft.code
+    : defaultCodeFor(problemDetail, context.language, context.ioMode)
+  applyEditorCode(context, nextCode, false)
   saveHint.value = draft.is_default ? '' : '草稿已恢复'
 }
 
+function desiredDraftContextForSlug(problemSlug: string): Readonly<DraftContext> {
+  return createDraftContext(problemSlug, desiredLanguage, desiredIoMode)
+}
+
+function currentDesiredDraftContext(): Readonly<DraftContext> | null {
+  if (!activeDraftContext) return null
+  return desiredDraftContextForSlug(activeDraftContext.slug)
+}
+
+async function requestDraftContext(
+  targetContext: Readonly<DraftContext>,
+): Promise<DraftTransitionResult> {
+  const transitionGeneration = ++draftTransitionGeneration
+  if (sameDraftContext(activeDraftContext, targetContext)) return 'applied'
+  if (!(await flushDraftBeforeTransition())) {
+    return transitionGeneration === draftTransitionGeneration ? 'failed' : 'superseded'
+  }
+  if (!canCommitDraftTransition(
+    transitionGeneration,
+    draftTransitionGeneration,
+    slug.value,
+    targetContext,
+    currentDesiredDraftContext(),
+  )) return 'superseded'
+
+  let draft: Draft
+  try {
+    draft = await fetchDraft(targetContext)
+  } catch {
+    if (transitionGeneration !== draftTransitionGeneration) return 'superseded'
+    saveHint.value = '草稿加载失败'
+    return 'failed'
+  }
+
+  if (!canCommitDraftTransition(
+    transitionGeneration,
+    draftTransitionGeneration,
+    slug.value,
+    targetContext,
+    currentDesiredDraftContext(),
+  )) return 'superseded'
+
+  // 用户可能在 GET 目标草稿期间继续编辑旧代码；提交目标状态前再保存一次。
+  if (!(await flushDraftBeforeTransition())) {
+    return transitionGeneration === draftTransitionGeneration ? 'failed' : 'superseded'
+  }
+  if (!canCommitDraftTransition(
+    transitionGeneration,
+    draftTransitionGeneration,
+    slug.value,
+    targetContext,
+    currentDesiredDraftContext(),
+  )) return 'superseded'
+
+  const currentProblem = problem.value
+  if (!currentProblem || currentProblem.slug !== targetContext.slug) return 'superseded'
+  applyLoadedDraft(targetContext, draft, currentProblem)
+  return 'applied'
+}
+
+function revertDesiredContext(targetContext: DraftContext) {
+  const currentContext = activeDraftContext
+  if (!currentContext) return
+  desiredLanguage = currentContext.language
+  desiredIoMode = currentContext.ioMode
+  if (langPref.value === targetContext.language && langPref.value !== currentContext.language) {
+    setLang(currentContext.language)
+  }
+  if (ioModePref.value === targetContext.ioMode && ioModePref.value !== currentContext.ioMode) {
+    setIoMode(currentContext.ioMode)
+  }
+}
+
+async function reconcileDesiredDraftContext(errorMessage: string) {
+  const targetContext = currentDesiredDraftContext()
+  if (!targetContext) return
+  const result = await requestDraftContext(targetContext)
+  if (result === 'failed') {
+    revertDesiredContext(targetContext)
+    toast.error(errorMessage)
+  }
+}
+
 async function setMode(mode: IoMode) {
-  if (ioMode.value === mode) return
+  if (desiredIoMode === mode && ioMode.value === mode) return
   if (mode === 'leetcode' && !problem.value?.leetcode_available) {
     toast.info('本题暂不支持力扣函数模式')
     return
   }
-  if (saveTimer) clearTimeout(saveTimer)
-  await saveDraftNow()
-  ioMode.value = mode
+  desiredIoMode = mode
   setIoMode(mode)
-  await loadDraft()
-}
-
-async function onLanguageChange() {
-  if (saveTimer) clearTimeout(saveTimer)
-  await saveDraftNow()
-  await loadDraft()
+  await reconcileDesiredDraftContext('当前草稿保存或目标草稿加载失败，评测模式未切换')
 }
 
 // 全局语言偏好变化时，编辑器语言与草稿同步切换
-watch(langPref, async (lang) => {
-  if (language.value === lang) return
-  language.value = lang
-  await onLanguageChange()
+watch(langPref, (nextLanguage) => {
+  desiredLanguage = nextLanguage
+  void reconcileDesiredDraftContext('当前草稿保存或目标草稿加载失败，语言未切换')
 })
 
 async function submit() {
-  if (!problem.value || submitting.value) return
-  if (saveTimer) clearTimeout(saveTimer)
-  await saveDraftNow()
+  if (!problem.value || !activeDraftContext || submitting.value) return
+  cancelPoll()
+  const submissionPollEpoch = pollEpoch
   submitting.value = true
+  submission.value = null
   tab.value = 'result'
+  const submissionSnapshot = createDraftSnapshot(activeDraftContext, code.value)
+  await saveDraftOnce()
+  if (!canAcceptSubmissionPoll(
+    submissionPollEpoch,
+    pollEpoch,
+    activeDraftContext?.slug,
+    submissionSnapshot.slug,
+  )) return
   try {
     const res = await api.post<{ id: number; status: string }>('/api/submissions', {
-      problem_slug: slug.value,
-      language: language.value,
-      io_mode: ioMode.value,
-      code: code.value,
+      problem_slug: submissionSnapshot.slug,
+      language: submissionSnapshot.language,
+      io_mode: submissionSnapshot.ioMode,
+      code: submissionSnapshot.code,
     })
+    if (!canAcceptSubmissionPoll(
+      submissionPollEpoch,
+      pollEpoch,
+      activeDraftContext?.slug,
+      submissionSnapshot.slug,
+    )) return
     submission.value = null
-    pollDeadline = Date.now() + 90_000
-    poll(res.id)
+    void poll(
+      res.id,
+      submissionSnapshot.slug,
+      submissionPollEpoch,
+      Date.now() + 90_000,
+    )
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : '提交评测失败')
-    submitting.value = false
+    if (canAcceptSubmissionPoll(
+      submissionPollEpoch,
+      pollEpoch,
+      activeDraftContext?.slug,
+      submissionSnapshot.slug,
+    )) {
+      toast.error(e instanceof Error ? e.message : '提交评测失败')
+      submitting.value = false
+    }
   }
 }
 
 const { recordSolvedProblem, activePlan } = useStudyPlan()
 
-async function poll(id: number) {
+function cancelPoll() {
+  pollEpoch += 1
+  if (pollTimer) {
+    clearTimeout(pollTimer)
+    pollTimer = null
+  }
+  submitting.value = false
+}
+
+function isCurrentPoll(epoch: number, problemSlug: string): boolean {
+  return canAcceptSubmissionPoll(
+    epoch,
+    pollEpoch,
+    activeDraftContext?.slug,
+    problemSlug,
+  )
+}
+
+async function poll(
+  id: number,
+  problemSlug: string,
+  epoch: number,
+  deadline: number,
+) {
+  if (!isCurrentPoll(epoch, problemSlug)) return
   try {
     const s = await api.get<Submission>(`/api/submissions/${id}`)
+    if (!isCurrentPoll(epoch, problemSlug)) return
     submission.value = s
     if (isFinal(s.status)) {
       submitting.value = false
       if (s.status === 'AC') {
         toast.success('恭喜！代码全部通过 (Accepted)')
         if (activePlan.value) {
-          recordSolvedProblem(slug.value)
+          recordSolvedProblem(problemSlug)
         }
       } else {
         toast.info(`评测完成：状态为 ${s.status}`)
       }
-      loadHistory()
+      void refreshHistory(problemSlug)
       return
     }
   } catch {
     /* 忽略网络抖动 */
   }
-  if (Date.now() > pollDeadline) {
+  if (!isCurrentPoll(epoch, problemSlug)) return
+  if (Date.now() > deadline) {
     submitting.value = false
     toast.error('评测响应超时，请刷新重试')
     return
   }
-  pollTimer = setTimeout(() => poll(id), 800)
+  pollTimer = setTimeout(() => {
+    pollTimer = null
+    void poll(id, problemSlug, epoch, deadline)
+  }, 800)
 }
 
-async function loadHistory() {
-  history.value = await api.get<Submission[]>(`/api/submissions?problem_slug=${slug.value}&limit=20`)
+async function refreshHistory(problemSlug: string) {
+  const generation = problemLoadGeneration
+  try {
+    const nextHistory = await fetchHistory(problemSlug)
+    if (
+      !isCurrentProblemLoad(generation, problemSlug)
+      || activeDraftContext?.slug !== problemSlug
+    ) return
+    history.value = nextHistory
+  } catch {
+    // 提交终态已经展示，历史刷新失败不覆盖现有记录。
+  }
 }
 
-async function loadAll() {
+async function loadAll(problemSlug: string = slug.value) {
+  const generation = ++problemLoadGeneration
+  draftTransitionGeneration += 1
+  cancelPoll()
+  clearSaveTimer()
+  activeDraftContext = null
+  dirty = false
+  desiredLanguage = langPref.value
   loading.value = true
+  problem.value = null
   submission.value = null
   solutionMd.value = ''
+  solutionLoading.value = true
+  history.value = []
+  expandedTc.value = new Set()
+  expandedHistory.value = new Set()
+  historyCode.value = {}
   tab.value = window.innerWidth >= 1024 ? 'code' : 'statement'
   try {
-    problem.value = await api.get<ProblemDetail>(`/api/problems/${slug.value}`)
-    const preferred: IoMode =
-      problem.value.leetcode_available && ioModePref.value === 'leetcode' ? 'leetcode' : 'acm'
-    ioMode.value = preferred
-    await Promise.all([loadDraft(), loadHistory(), loadSolution()])
+    const nextProblem = await api.get<ProblemDetail>(`/api/problems/${problemSlug}`)
+    if (!isCurrentProblemLoad(generation, problemSlug)) return
+    problem.value = nextProblem
+    desiredIoMode =
+      nextProblem.leetcode_available && ioModePref.value === 'leetcode' ? 'leetcode' : 'acm'
+    desiredLanguage = langPref.value
+
+    let [loadedDraft, nextHistory, nextSolution] = await Promise.all([
+      fetchDesiredPageDraft(problemSlug, generation),
+      fetchHistory(problemSlug),
+      fetchSolution(problemSlug),
+    ])
+    if (!loadedDraft || !isCurrentProblemLoad(generation, problemSlug)) return
+
+    const desiredContext = desiredDraftContextForSlug(problemSlug)
+    if (!canCommitProblemDraft(
+      generation,
+      problemLoadGeneration,
+      slug.value,
+      problemSlug,
+      loadedDraft.context,
+      desiredContext,
+    )) {
+      loadedDraft = await fetchDesiredPageDraft(problemSlug, generation)
+    }
+    if (
+      !loadedDraft
+      || !canCommitProblemDraft(
+        generation,
+        problemLoadGeneration,
+        slug.value,
+        problemSlug,
+        loadedDraft.context,
+        desiredDraftContextForSlug(problemSlug),
+      )
+    ) return
+
+    applyLoadedDraft(loadedDraft.context, loadedDraft.draft, nextProblem)
+    history.value = nextHistory
+    solutionMd.value = nextSolution
   } catch {
-    problem.value = null
+    if (isCurrentProblemLoad(generation, problemSlug)) problem.value = null
   } finally {
-    loading.value = false
+    if (isCurrentProblemLoad(generation, problemSlug)) {
+      loading.value = false
+      solutionLoading.value = false
+    }
   }
 }
 
 function onGlobalKeydown(e: KeyboardEvent) {
   if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
     e.preventDefault()
-    submit()
+    void submit()
   } else if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
     e.preventDefault()
-    saveDraftNow()
-    toast.success('草稿已立即保存')
+    void flushDraftBeforeTransition().then((succeeded) => {
+      if (succeeded) toast.success('草稿已立即保存')
+      else toast.error('草稿保存失败，可再次按 Ctrl+S 重试')
+    })
   } else if (e.key === 'Escape') {
     if (isZen.value) isZen.value = false
   }
@@ -706,11 +1054,16 @@ function onResize() {
   isDesktop.value = window.innerWidth >= 1024
 }
 
-watch(slug, async (n, o) => {
+onBeforeRouteUpdate(async (to, from) => {
+  if (to.params.slug === from.params.slug) return true
+  if (await flushDraftBeforeTransition()) return true
+  toast.error('当前草稿保存失败，请重试后再切换题目')
+  return false
+})
+
+watch(slug, (n, o) => {
   if (n !== o && o) {
-    if (saveTimer) clearTimeout(saveTimer)
-    await saveDraftNow()
-    await loadAll()
+    void loadAll(n)
   }
 })
 
@@ -722,15 +1075,17 @@ onMounted(() => {
   }
   window.addEventListener('resize', onResize)
   window.addEventListener('keydown', onGlobalKeydown)
-  loadAll()
+  void loadAll()
 })
 
 onBeforeUnmount(() => {
+  problemLoadGeneration += 1
+  draftTransitionGeneration += 1
+  cancelPoll()
   window.removeEventListener('resize', onResize)
   window.removeEventListener('keydown', onGlobalKeydown)
-  if (saveTimer) clearTimeout(saveTimer)
-  if (pollTimer) clearTimeout(pollTimer)
+  clearSaveTimer()
   if (timerInterval) clearInterval(timerInterval)
-  saveDraftNow()
+  void saveDraftOnce()
 })
 </script>
