@@ -1,6 +1,9 @@
 import contextlib
 import io
+import os
+import runpy
 import sys
+import tempfile
 from pathlib import Path
 
 from judge.leetcode_catalog import SPECS, spec_for
@@ -11,15 +14,19 @@ SEED = Path(__file__).resolve().parents[1] / "app" / "seed" / "problems"
 
 
 def _exec_wrap(wrapped: str, stdin_text: str) -> str:
-    g = {"__name__": "__main__"}
+    """将生成的 harness 落到临时文件后按文件执行，与判题 worker 的运行方式一致"""
     buf_out = io.StringIO()
     old_in = sys.stdin
     sys.stdin = io.StringIO(stdin_text)
+    fd, path = tempfile.mkstemp(suffix=".py")
     try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(wrapped)
         with contextlib.redirect_stdout(buf_out):
-            exec(compile(wrapped, "<wrap>", "exec"), g)
+            runpy.run_path(path, run_name="__main__")
     finally:
         sys.stdin = old_in
+        os.unlink(path)
     return buf_out.getvalue()
 
 
