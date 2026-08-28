@@ -1,1 +1,301 @@
-__FILE_3__
+/* ==========================================================================
+   认证簇 · 登录 / 注册（LoginView / RegisterView 共用）— 档案刊物风
+   --------------------------------------------------------------------------
+   桌面端：左侧刊头品牌区（衬线刊名 + 规线特性栏），右侧描边档案卡片。
+   移动端（≤1023px）单列居中，hero 精简为一行品牌字。
+   基础组件复用 base.css：.badge-source / .segmented / .input /
+   .btn-primary / .error-banner / .field。本文件只定义 auth-* 布局与差异样式。
+   ========================================================================== */
+
+/* ---------- 页面骨架（.auth-page 的 page-fade 动画见 base.css） ---------- */
+.auth-page {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 24px;
+}
+
+.auth-container {
+  width: 100%;
+  max-width: 1180px;
+  display: grid;
+  grid-template-columns: 1.05fr 0.95fr;
+  gap: 72px;
+  align-items: center;
+}
+
+/* ---------- 左侧刊头品牌区 ---------- */
+.auth-hero-brand {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding-bottom: 16px;
+  margin-bottom: 28px;
+  /* 报头双规线 */
+  border-bottom: 1px solid var(--border);
+}
+
+.brand-logo {
+  font-family: var(--display-font);
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: var(--display-tracking);
+  color: var(--text);
+}
+.brand-logo .path { color: var(--accent); }
+
+/* 校招徽章：描边方章 */
+.auth-badge { font-size: 12px; }
+
+/* 大标题跟随三档字号体系（--font-display），衬线刊头 */
+.auth-hero-title {
+  font-size: var(--font-display);
+  font-family: var(--display-font);
+  line-height: 1.25;
+  font-weight: 800;
+  letter-spacing: var(--display-tracking);
+  margin: 0 0 16px;
+  color: var(--text);
+}
+
+.gradient-text { color: var(--accent); }
+
+.auth-hero-desc {
+  font-size: 15.5px;
+  line-height: 1.8;
+  color: var(--text-dim);
+  margin: 0 0 28px;
+  max-width: 480px;
+}
+
+/* 特性栏：发丝规线分隔的"资料条目" */
+.auth-hero-feats {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  padding: 0;
+  margin: 0 0 32px;
+  border-top: 0.5px solid var(--border-strong);
+  border-bottom: 0.5px solid var(--border-strong);
+}
+.auth-hero-feats li {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--text-dim);
+  padding: 10px 18px 10px 0;
+  margin-right: 18px;
+  border-right: 0.5px solid var(--border);
+}
+.auth-hero-feats li:last-child { border-right: none; margin-right: 0; }
+.auth-hero-feats li svg { color: var(--accent); flex: none; }
+
+.auth-hero-footer {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+}
+
+/* ---------- 右侧档案卡片 ---------- */
+.auth-form-side { width: 100%; }
+
+.auth-card {
+  background: var(--surface);
+  border: 0.5px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow), inset 0 1px 0 var(--card-hi);
+  padding: 32px 36px 28px;
+}
+
+/* 登录 / 注册分段切换：复用 base .segmented，拉满整行 */
+.auth-tabs {
+  display: flex;
+  width: 100%;
+  margin-bottom: 26px;
+}
+.auth-tabs a {
+  flex: 1;
+  text-align: center;
+  padding: 8px 14px;
+  font-size: 14px;
+}
+
+.auth-card-header {
+  margin-bottom: 22px;
+  padding-bottom: 14px;
+  border-bottom: 0.5px solid var(--border);
+}
+.auth-card-header h2 {
+  font-size: 22px;
+  font-weight: 800;
+  font-family: var(--display-font);
+  letter-spacing: var(--display-tracking);
+  margin: 0 0 6px;
+}
+.auth-card-header p {
+  font-size: 13.5px;
+  margin: 0;
+  color: var(--text-dim);
+}
+
+/* 错误横幅：复用 base .error-banner，仅微调间距 */
+.auth-err { margin-bottom: 18px; }
+
+/* ---------- 表单 ---------- */
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* 标签行：左标题右提示（base .field > label 的扩展布局） */
+.auth-label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+}
+.form-hint {
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--text-faint);
+}
+.req { color: var(--red); }
+
+/* 认证大输入框：在 base .input 描边式基础上加大 */
+.auth-input {
+  width: 100%;
+  padding: 12px 16px;
+  font-size: 15px;
+}
+
+/* 密码框 + 可见性切换 */
+.auth-pwd-wrap { position: relative; }
+.auth-pwd-wrap .auth-input { padding-right: 48px; }
+
+.pwd-toggle {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: color 0.2s ease, background 0.2s ease;
+}
+.pwd-toggle:hover { color: var(--text); background: var(--surface-2); }
+
+/* 密码强度条（颜色由脚本经 CSS 变量内联传入） */
+.pwd-strength-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+.strength-track {
+  flex: 1;
+  height: 4px;
+  background: var(--surface-3);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.strength-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.25s ease, background 0.25s ease;
+}
+.strength-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  min-width: 26px;
+  text-align: right;
+}
+
+/* 主按钮：base .btn-primary 全宽加高 */
+.auth-submit {
+  width: 100%;
+  padding: 13px 20px;
+  font-size: 15.5px;
+  margin-top: 6px;
+}
+
+/* 加载圈（btn-primary 上的浅色 spinner） */
+.btn-spinner {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: auth-spin 0.7s linear infinite;
+}
+@keyframes auth-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* 卡片底部换页链接 */
+.auth-card-footer {
+  margin-top: 22px;
+  padding-top: 16px;
+  border-top: 0.5px solid var(--border);
+  text-align: center;
+  font-size: 13.5px;
+  color: var(--text-dim);
+}
+.auth-link { font-weight: 600; margin-left: 6px; }
+.auth-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+/* 错误横幅淡入淡出（模板用 <transition name="fade">） */
+.fade-enter-active, .fade-leave-active { transition: opacity 0.18s ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
+
+/* ---------- 宽屏增强（≥1800px） ---------- */
+@media (min-width: 1800px) {
+  .auth-container { max-width: 1440px; gap: 110px; }
+  .auth-card { padding: 40px 44px 32px; }
+}
+
+/* ---------- 移动端（≤1023px）：单列居中，hero 精简为一行品牌 ---------- */
+@media (max-width: 1023px) {
+  .auth-page {
+    align-items: flex-start;
+    padding: 28px 20px calc(32px + var(--bottom-nav-h));
+  }
+  .auth-container {
+    grid-template-columns: 1fr;
+    gap: 28px;
+    max-width: 480px;
+  }
+  /* hero 只留一行品牌字，居中 */
+  .auth-hero-brand {
+    justify-content: center;
+    margin-bottom: 0;
+    border-bottom: none;
+  }
+  .auth-hero-title,
+  .auth-hero-desc,
+  .auth-hero-feats,
+  .auth-hero-footer {
+    display: none;
+  }
+  .auth-card { padding: 24px 22px 20px; }
+  .auth-card-header { text-align: center; }
+
+  /* 触控目标 ≥44px */
+  .auth-input { padding: 13px 16px; font-size: 16px; /* 防 iOS 聚焦自动缩放 */ }
+  .pwd-toggle { width: 44px; height: 44px; right: 2px; }
+  .auth-pwd-wrap .auth-input { padding-right: 52px; }
+  .auth-submit { padding: 14px 20px; }
+  .auth-tabs a { padding: 10px 14px; }
+}
