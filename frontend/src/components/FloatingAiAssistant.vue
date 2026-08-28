@@ -320,6 +320,7 @@ import {
   type Size,
 } from '../aiLauncherChrome'
 import { renderMarkdown } from '../markdown'
+import { copyToClipboard } from '../clipboard'
 import { estimateTokens, messagePlainText, useAiStore, type AiMessage } from '../stores/ai'
 import { useAiAssistant } from '../stores/aiAssistant'
 import { useAuthStore } from '../stores/auth'
@@ -685,9 +686,10 @@ function renderMd(text: string) {
   return renderMarkdown(text)
 }
 
-function copyText(text: string) {
-  navigator.clipboard.writeText(text)
-  toast.success('已复制到剪贴板')
+async function copyText(text: string) {
+  const ok = await copyToClipboard(text)
+  if (ok) toast.success('已复制到剪贴板')
+  else toast.error('复制失败，请手动选择复制')
 }
 
 function scrollToBottom() {

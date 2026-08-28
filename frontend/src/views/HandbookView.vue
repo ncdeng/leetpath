@@ -360,6 +360,7 @@
 import { computed, ref, watch } from 'vue'
 import { useToast } from '../stores/toast'
 import { useLangPref } from '../stores/pref'
+import { copyToClipboard } from '../clipboard'
 import AppIcon from '../components/AppIcon.vue'
 
 const toast = useToast()
@@ -374,9 +375,10 @@ watch(langPref, (newLang) => {
   tplLang.value = newLang
 })
 
-function copy(text: string) {
-  navigator.clipboard.writeText(text)
-  toast.success('模板代码已复制到剪贴板')
+async function copy(text: string) {
+  const ok = await copyToClipboard(text)
+  if (ok) toast.success('模板代码已复制到剪贴板')
+  else toast.error('复制失败，请手动选择复制')
 }
 
 const BASICS_DS = [

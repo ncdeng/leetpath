@@ -236,6 +236,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { api } from '../api'
+import { copyToClipboard } from '../clipboard'
 import {
   DraftSaveQueue,
   createGenerationGate,
@@ -547,10 +548,11 @@ async function loadCodeIntoEditor(historySnippet: string, lang: Language, mode: 
   }
 }
 
-function copyCode(content: string) {
+async function copyCode(content: string) {
   if (!content) return
-  navigator.clipboard.writeText(content)
-  toast.success('代码已复制到剪贴板')
+  const ok = await copyToClipboard(content)
+  if (ok) toast.success('代码已复制到剪贴板')
+  else toast.error('复制失败，请手动选择复制')
 }
 
 function defaultCodeFor(lang: Language, mode: IoMode): string {

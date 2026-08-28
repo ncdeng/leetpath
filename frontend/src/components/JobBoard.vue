@@ -338,10 +338,10 @@ const companyList = computed<CompanyGroup[]>(() => {
   })
 })
 
-const filteredCompanies = computed(() => {
+const filteredCompanies = computed<CompanyGroup[]>(() => {
   const kw = q.value.trim().toLowerCase()
 
-  return companyList.value
+  const list = companyList.value
     .map((c) => {
       // 过滤公司下的岗位
       const matchedJobs = c.jobs.filter((j) => {
@@ -376,6 +376,8 @@ const filteredCompanies = computed(() => {
       }
     })
     .filter((c): c is CompanyGroup => c !== null)
+    // limit 用于首页精选：只展示前 N 家公司（排序已把大厂与紧急截止排在前）
+  return props.limit ? list.slice(0, props.limit) : list
 })
 
 const filteredJobsCount = computed(() =>
@@ -442,6 +444,8 @@ async function load() {
     jobs.value = await api.get<Job[]>('/api/jobs')
     // 不再默认展开公司：头部大厂单家就有几百个岗位，自动展开会一次性渲染
     // 数千个 DOM 节点，每次进入看板都触发一次渲染尖峰（低端 GPU 直接卡死）
+  } catch {
+    toast.error('岗位加载失败，请稍后重试')
   } finally {
     loading.value = false
   }

@@ -30,7 +30,9 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
       /* ignore */
     }
     if (res.status === 401 && !['/login', '/register'].includes(location.pathname)) {
-      location.assign('/login')
+      // 带上当前路径，登录完成后由 LoginView 跳回原页面（与 router 守卫行为一致）
+      const next = encodeURIComponent(location.pathname + location.search)
+      location.assign(`/login?redirect=${next}`)
     }
     throw new ApiError(res.status, message)
   }
