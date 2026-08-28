@@ -39,6 +39,8 @@ SAMPLE_IO_LIMIT = 1000
 COMPILE_TIMEOUT_S = 60
 OUTPUT_LIMIT_BYTES = 1024 * 1024
 OUTPUT_LIMIT_RETURN_CODE = -2
+# 评测容器内预检查（py_compile）失败时约定的退出码，区别于运行期错误的 1
+CE_PRECHECK_RETURN_CODE = 3
 
 STATUS_AC = "AC"
 STATUS_WA = "WA"
@@ -368,7 +370,12 @@ def claim_pending(session: Any, Submission: Any) -> int | None:
 
 
 def recover_orphaned_judging(session: Any, Submission: Any) -> int:
-    """单 worker 启动时回收上一次进程遗留的 judging 提交。"""
+    """把 judging 提交打回 pending。
+
+    单 worker 串行评测：一轮结束时仍处于 judging 的提交必然是强杀/外力
+    遗留的孤儿。启动时调用清历史遗留，主循环每轮结尾调用当看门狗，
+    避免卡死的 judging 占住在途配额（MAX_GLOBAL_IN_FLIGHT 按 pending+judging 计数）。
+    """
     from sqlalchemy import update
 
     result = session.execute(
@@ -378,6 +385,57 @@ def recover_orphaned_judging(session: Any, Submission: Any) -> int:
     )
     session.commit()
     return int(result.rowcount or 0)
+
+
+def cleanup_stale_artifacts() -> tuple[int, int]:
+    """清理上次异常退出遗留的已停评测容器与过期临时目录，避免随时间累积。
+
+    只动「已退出」的 lpj-* 容器和超过 1 小时未变更的 workdir，
+    不会碰仍在运行的其他 worker 的活跃资源。
+    """
+    removed_containers = 0
+    try:
+        r = _run_docker(
+            ["ps", "-aq", "--filter", "name=lpj-", "--filter", "status=exited"],
+            timeout=30,
+        )
+        if r.returncode == 0:
+            for cid in r.stdout.split():
+                _force_rm_container(cid.strip())
+                removed_containers += 1
+    except JudgeInfraError:
+        pass
+    removed_dirs = 0
+    cutoff = time.time() - 3600
+    for entry in Path(tempfile.gettempdir()).glob("lpj-*"):
+        try:
+            if entry.is_dir() and entry.stat().st_mtime < cutoff:
+                shutil.rmtree(entry, ignore_errors=True)
+                removed_dirs += 1
+        except OSError:
+            continue
+    return removed_containers, removed_dirs
+
+
+def _start_heartbeat() -> threading.Thread:
+    """后台线程周期性 touch 心跳文件，供 compose healthcheck 探测 worker 是否存活。
+
+    评测在主线程串行执行，单次评测可能长达数分钟，心跳放在独立线程
+    才不会在长评测期间被误判为卡死。
+    """
+    path = Path(tempfile.gettempdir()) / "lpj-worker-heartbeat"
+
+    def beat() -> None:
+        while True:
+            try:
+                path.touch()
+            except OSError:
+                pass
+            time.sleep(10)
+
+    thread = threading.Thread(target=beat, daemon=True)
+    thread.start()
+    return thread
 
 
 def _prepare_workdir(job: JobData) -> Path:
@@ -400,6 +458,9 @@ def _prepare_workdir(job: JobData) -> Path:
             newline="\n",
         )
     root.chmod(0o777)
+    # 隐藏用例只应经 docker 单文件挂载进容器；宿主侧收紧到属主可读，
+    # 避免同机其他用户直接翻看隐藏用例
+    tests_dir.chmod(0o700)
     return root
 
 
@@ -443,7 +504,9 @@ def _compile_cpp(work_dir: Path) -> str | None:
 
 
 def _looks_like_docker_failure(r: subprocess.CompletedProcess[str]) -> bool:
-    text = f"{r.stderr}\n{r.stdout}".lower()
+    """只匹配 stderr 首行，避免用户程序自己打印含 docker 字样的输出被误判为基础设施故障。"""
+    lines = (r.stderr or "").strip().splitlines()
+    first = lines[0].lower() if lines else ""
     needles = (
         "unable to find image",
         "cannot connect",
@@ -453,7 +516,7 @@ def _looks_like_docker_failure(r: subprocess.CompletedProcess[str]) -> bool:
         "is not running",
         "no such image",
     )
-    return any(n in text for n in needles)
+    return any(n in first for n in needles)
 
 
 def _run_case(
@@ -462,11 +525,22 @@ def _run_case(
     case: CaseData,
     image: str,
     inner_cmd: str,
+    pre_cmd: str | None = None,
 ) -> tuple[str, int, str, str]:
-    """返回 (status, runtime_ms, stdout, stderr)。runtime_ms 为外层 wall time（含容器启动开销）。"""
+    """返回 (status, runtime_ms, stdout, stderr)。runtime_ms 为外层 wall time（含容器启动开销）。
+
+    只把当前用例的 .in 与源码文件单独挂进容器：整目录挂载会让用户代码
+    直接读到全部隐藏用例输入。
+    """
     limit_s = max(1, math.ceil(job.time_limit_ms / 1000))
-    infile = f"tests/{case.ordinal:03d}.in"
-    inner = f"timeout -s KILL {limit_s} {inner_cmd} < {infile}"
+    code_file = "main.py" if job.language == "python3" else "main_bin"
+    infile_host = work_dir / "tests" / f"{case.ordinal:03d}.in"
+    timed = f"timeout -s KILL {limit_s} {inner_cmd} < /tests/current.in"
+    if pre_cmd:
+        # 预检查失败走独立退出码，与运行期错误区分（如 python 语法错误应判 CE）
+        inner = f"{pre_cmd} || exit {CE_PRECHECK_RETURN_CODE}; {timed}"
+    else:
+        inner = timed
     mem = f"{job.memory_limit_mb}m"
     # 不用 --rm：timeout -s KILL 在容器内也返回 137，必须 inspect OOMKilled 才能和 MLE 区分；结束后显式 rm。
     args = [
@@ -481,7 +555,8 @@ def _run_case(
         "--cap-drop", "ALL",
         "--security-opt", "no-new-privileges",
         "--user", "65534:65534",
-        "-v", _docker_volume(work_dir, "/work", read_only=True),
+        "-v", _docker_volume(work_dir / code_file, f"/work/{code_file}", read_only=True),
+        "-v", _docker_volume(infile_host, "/tests/current.in", read_only=True),
         "-w", "/work",
         image,
         "sh", "-c", inner,
@@ -497,9 +572,13 @@ def _run_case(
         oom = _container_oom_killed(name) if r.returncode != -1 else False
 
         if r.returncode == -1:
-            return STATUS_TLE, runtime_ms, stdout, stderr
+            # docker CLI 被外层超时强杀：几乎必然是容器启动慢/宿主拥塞，
+            # 内层 timeout 才是真正的程序超时，这里判 IE 而不是冤枉用户 TLE
+            return STATUS_IE, runtime_ms, stdout, USER_IE_MESSAGE
         if r.returncode == OUTPUT_LIMIT_RETURN_CODE:
             return STATUS_RE, runtime_ms, stdout, "程序输出超过 1 MiB 限制"
+        if r.returncode == CE_PRECHECK_RETURN_CODE:
+            return STATUS_CE, runtime_ms, stdout, stderr
         if r.returncode == 124:
             return STATUS_TLE, runtime_ms, stdout, stderr
         if r.returncode == 137:
@@ -563,21 +642,30 @@ def evaluate(job: JobData) -> tuple[str, int | None, list[dict[str, Any]], str |
         if job.language == "python3":
             image = JUDGE_IMAGE_PYTHON
             inner_cmd = "python3 main.py"
+            # python 没有编译阶段：语法错误会被判成 RE + 一屏 traceback。
+            # 先 py_compile 预检查，失败判 CE；pycache 指到 /tmp（/work 只读）。
+            pre_cmd = "PYTHONPYCACHEPREFIX=/tmp/pyc python3 -m py_compile main.py"
         else:
             image = JUDGE_IMAGE_CPP
             inner_cmd = "./main_bin"
+            pre_cmd = None
 
         details: list[dict[str, Any]] = []
         overall = STATUS_AC
         max_runtime = 0
+        compile_output: str | None = None
         for case in job.cases:
-            status, runtime_ms, stdout, stderr = _run_case(job, work_dir, case, image, inner_cmd)
+            status, runtime_ms, stdout, stderr = _run_case(
+                job, work_dir, case, image, inner_cmd, pre_cmd
+            )
             details.append(_case_detail(case, status, runtime_ms, stdout, stderr))
             max_runtime = max(max_runtime, runtime_ms)
             if status != STATUS_AC:
                 overall = status
+                if status == STATUS_CE:
+                    compile_output = _truncate(stderr, COMPILE_OUTPUT_LIMIT)
                 break
-        return overall, max_runtime, details, None
+        return overall, max_runtime, details, compile_output
     finally:
         shutil.rmtree(work_dir, ignore_errors=True)
 
@@ -689,6 +777,10 @@ def main() -> None:
     if recovered:
         log.warning("已回收 %s 个遗留 judging 提交", recovered)
     require_images()
+    cleaned_containers, cleaned_dirs = cleanup_stale_artifacts()
+    if cleaned_containers or cleaned_dirs:
+        log.info("清理遗留评测容器 %s 个、临时目录 %s 个", cleaned_containers, cleaned_dirs)
+    _start_heartbeat()
     log.info(
         "worker 启动 poll=%.1fs python=%s cpp=%s",
         POLL_INTERVAL,
@@ -701,15 +793,21 @@ def main() -> None:
                 sub_id = claim_pending(session, Submission)
             if sub_id is None:
                 time.sleep(POLL_INTERVAL)
-                continue
-            log.info("领取 submission id=%s", sub_id)
-            process_submission(SessionLocal, Submission, Problem, Testcase, sub_id)
+            else:
+                log.info("领取 submission id=%s", sub_id)
+                process_submission(SessionLocal, Submission, Problem, Testcase, sub_id)
         except KeyboardInterrupt:
             log.info("收到中断，退出")
             raise
         except Exception:
             log.exception("轮询循环异常，继续")
             time.sleep(POLL_INTERVAL)
+        try:
+            with SessionLocal() as session:
+                if recover_orphaned_judging(session, Submission):
+                    log.warning("看门狗回收了遗留 judging 提交")
+        except Exception:
+            log.exception("看门狗回收异常，继续")
 
 
 if __name__ == "__main__":

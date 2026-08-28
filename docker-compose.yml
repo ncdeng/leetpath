@@ -75,6 +75,13 @@ services:
       - backend
     restart: unless-stopped
     logging: *default-logging
+    # worker 心跳由 judge.worker 后台线程每 10s touch；进程僵死时置 unhealthy 便于发现
+    healthcheck:
+      test: ["CMD", "find", "/var/lib/leetpath/judge-tmp/lpj-worker-heartbeat", "-mmin", "-2"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
   backup:
     image: leetpath-backend:${LEETPATH_VERSION:-latest}

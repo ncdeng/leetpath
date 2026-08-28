@@ -1,5 +1,7 @@
+import os
 import subprocess
 import sys
+import time
 
 from judge import worker
 
@@ -205,3 +207,135 @@ def test_worker_recovers_orphaned_judging_submissions(admin_client):
 
     with dbmod.SessionLocal() as db:
         assert db.get(Submission, created["id"]).status == "pending"
+
+
+def _make_job(**overrides) -> worker.JobData:
+    fields = {
+        "submission_id": 1,
+        "language": "python3",
+        "code": "print('ok')",
+        "time_limit_ms": 1000,
+        "memory_limit_mb": 128,
+        "cases": (),
+        "io_mode": "acm",
+        "problem_slug": "two-sum",
+        "leetcode_spec": None,
+    }
+    fields.update(overrides)
+    return worker.JobData(**fields)
+
+
+def _make_case(ordinal: int = 1) -> worker.CaseData:
+    return worker.CaseData(ordinal=ordinal, input_text="", expected_output="ok", is_sample=True)
+
+
+def _make_tests_dir(tmp_path, ordinal: int = 1):
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+    (tests_dir / f"{ordinal:03d}.in").write_text("", encoding="utf-8")
+    return tests_dir
+
+
+def test_run_case_mounts_only_current_case_not_whole_dir(tmp_path, monkeypatch):
+    captured: list[str] = []
+
+    def fake_run(args, timeout, *, container_name=None):
+        captured.extend(args)
+        return subprocess.CompletedProcess(args, 0, "ok\n", "")
+
+    monkeypatch.setattr(worker, "_run_docker", fake_run)
+    monkeypatch.setattr(worker, "_force_rm_container", lambda _name: None)
+    _make_tests_dir(tmp_path, ordinal=2)
+
+    status, _, _, _ = worker._run_case(
+        _make_job(), tmp_path, _make_case(ordinal=2), "python-image", "python3 main.py"
+    )
+
+    assert status == worker.STATUS_AC
+    volumes = [captured[i + 1] for i, arg in enumerate(captured) if arg == "-v"]
+    # 只挂当前用例与源码文件；整目录挂载会让用户代码读到全部隐藏用例
+    assert any(v.endswith(":/tests/current.in:ro") and "002.in" in v for v in volumes)
+    assert any(v.endswith(":/work/main.py:ro") for v in volumes)
+    assert not any(v.endswith(":/work:ro") for v in volumes)
+
+
+def test_run_case_maps_outer_timeout_to_ie(tmp_path, monkeypatch):
+    def fake_run(args, timeout, *, container_name=None):
+        return subprocess.CompletedProcess(args, -1, "", "")
+
+    monkeypatch.setattr(worker, "_run_docker", fake_run)
+    monkeypatch.setattr(worker, "_force_rm_container", lambda _name: None)
+    _make_tests_dir(tmp_path)
+
+    status, _, _, stderr = worker._run_case(
+        _make_job(), tmp_path, _make_case(), "python-image", "python3 main.py"
+    )
+
+    # docker CLI 被外层超时强杀是基础设施问题，不该冤枉用户 TLE
+    assert status == worker.STATUS_IE
+    assert stderr == worker.USER_IE_MESSAGE
+
+
+def test_run_case_maps_precheck_exit_code_to_ce(tmp_path, monkeypatch):
+    def fake_run(args, timeout, *, container_name=None):
+        return subprocess.CompletedProcess(args, worker.CE_PRECHECK_RETURN_CODE, "", "SyntaxError")
+
+    monkeypatch.setattr(worker, "_run_docker", fake_run)
+    monkeypatch.setattr(worker, "_force_rm_container", lambda _name: None)
+    _make_tests_dir(tmp_path)
+
+    status, _, _, _ = worker._run_case(
+        _make_job(),
+        tmp_path,
+        _make_case(),
+        "python-image",
+        "python3 main.py",
+        pre_cmd="python3 -m py_compile main.py",
+    )
+
+    assert status == worker.STATUS_CE
+
+
+def test_python_syntax_error_maps_to_ce_with_compile_output(tmp_path, monkeypatch):
+    monkeypatch.setattr(worker.tempfile, "gettempdir", lambda: str(tmp_path))
+    captured_pre: list[str | None] = []
+
+    def fake_run_case(job, work_dir, case, image, inner_cmd, pre_cmd=None):
+        captured_pre.append(pre_cmd)
+        return worker.STATUS_CE, 5, "", "SyntaxError: invalid syntax"
+
+    monkeypatch.setattr(worker, "_run_case", fake_run_case)
+    job = _make_job(
+        cases=(worker.CaseData(ordinal=1, input_text="", expected_output="", is_sample=True),)
+    )
+
+    status, _, _, compile_output = worker.evaluate(job)
+
+    assert status == worker.STATUS_CE
+    assert "SyntaxError" in (compile_output or "")
+    assert captured_pre and "py_compile" in captured_pre[0]
+
+
+def test_cleanup_stale_artifacts_removes_exited_containers_and_old_dirs(tmp_path, monkeypatch):
+    removed: list[str] = []
+    monkeypatch.setattr(
+        worker,
+        "_run_docker",
+        lambda args, timeout: subprocess.CompletedProcess(args, 0, "cid1\ncid2\n", ""),
+    )
+    monkeypatch.setattr(worker, "_force_rm_container", lambda name: removed.append(name))
+    monkeypatch.setattr(worker.tempfile, "gettempdir", lambda: str(tmp_path))
+    old_dir = tmp_path / "lpj-11"
+    old_dir.mkdir()
+    stale = time.time() - 7200
+    os.utime(old_dir, (stale, stale))
+    fresh_dir = tmp_path / "lpj-12"
+    fresh_dir.mkdir()
+
+    containers, dirs = worker.cleanup_stale_artifacts()
+
+    assert containers == 2
+    assert removed == ["cid1", "cid2"]
+    assert dirs == 1
+    assert not old_dir.exists()
+    assert fresh_dir.exists()

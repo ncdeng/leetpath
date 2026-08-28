@@ -1,11 +1,17 @@
 #!/usr/bin/env bash
 # 服务器一键升级：拉代码 → 按根目录 VERSION 构建带标签镜像 → 重启 → 健康检查
 # 用法：scripts/upgrade.sh        （升级）
-# 回滚：git checkout v<旧版本> 后重新执行本脚本即可（git pull 在 detached HEAD 上会失败，可跳过报错后手动构建）
+# 回滚：git checkout v<旧版本> 后重新执行本脚本即可（detached HEAD 下会自动跳过 git pull）
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-git pull --ff-only
+# set -e 下 detached HEAD 的 pull 必失败且会当场退出，回滚流程就走不到构建了；
+# 显式识别回滚场景跳过 pull，正常分支上 pull 失败仍应中止（避免用旧代码构建出新版本）
+if [[ "$(git rev-parse --abbrev-ref HEAD)" == "HEAD" ]]; then
+  echo "==> detached HEAD（回滚模式），跳过 git pull"
+else
+  git pull --ff-only
+fi
 export LEETPATH_VERSION="$(cat VERSION)"
 echo "==> 升级到 v$LEETPATH_VERSION"
 
