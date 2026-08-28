@@ -53,6 +53,24 @@ def _get_effective_ai_config(db: Session) -> tuple[str, str, str]:
     return key, url, model
 
 
+def _resolve_upstream_credentials(
+    payload_key: str, payload_url: str, sys_key: str, sys_url: str
+) -> tuple[str, str]:
+    """决定转发用的 key 与 base_url，两者必须同源。
+
+    系统内置 Key 只服务于系统默认地址：用户把 base_url 指向别家服务时必须
+    自带 Key，否则等于把系统共享 Key 以 Bearer 头发给未授权的第三方。
+    """
+    key = payload_key.strip()
+    url = payload_url.strip() or sys_url
+    if payload_url.strip() and url.rstrip("/") != sys_url.rstrip("/") and not key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="使用自定义服务地址时必须同时填写该服务的 API Key，系统内置 Key 仅限默认服务地址使用",
+        )
+    return key or sys_key, url
+
+
 @router.get("/status")
 def get_ai_status(db: Session = Depends(get_db), _user: User = Depends(get_current_user)) -> dict[str, Any]:
     """返回服务端是否内置了内测 AI 密钥及默认模型信息"""
@@ -151,14 +169,13 @@ def _build_url(base_url: str, endpoint: str) -> str:
 @router.post("/models")
 async def fetch_models(payload: FetchModelsRequest, db: Session = Depends(get_db), _user: User = Depends(get_current_user)):
     sys_key, sys_url, _ = _get_effective_ai_config(db)
-    clean_key = payload.api_key.strip() or sys_key
+    clean_key, base_url = _resolve_upstream_credentials(payload.api_key, payload.base_url, sys_key, sys_url)
     if not clean_key:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="请先在 AI 设置中输入 API Key",
         )
 
-    base_url = payload.base_url.strip() or sys_url
     _validate_base_url(base_url)
     target_url = _build_url(base_url, "models")
 
@@ -204,14 +221,13 @@ async def fetch_models(payload: FetchModelsRequest, db: Session = Depends(get_db
 @router.post("/chat")
 async def chat_stream(payload: ChatStreamRequest, db: Session = Depends(get_db), _user: User = Depends(get_current_user)):
     sys_key, sys_url, sys_model = _get_effective_ai_config(db)
-    clean_key = payload.api_key.strip() or sys_key
+    clean_key, base_url = _resolve_upstream_credentials(payload.api_key, payload.base_url, sys_key, sys_url)
     if not clean_key:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="未配置 API Key，请在 AI 设置中填入或由管理员在后台配置系统内置 Key",
         )
 
-    base_url = payload.base_url.strip() or sys_url
     model = payload.model.strip() or sys_model or "grok-4.6-xhigh"
     _validate_base_url(base_url)
     target_url = _build_url(base_url, "chat/completions")
@@ -252,4 +268,10 @@ async def chat_stream(payload: ChatStreamRequest, db: Session = Depends(get_db),
         except Exception as e:
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    # X-Accel-Buffering: no 让 nginx 对 SSE 关闭缓冲，否则流式被攒成批发，
+    # 且推理模型静默思考超过 proxy_read_timeout 时连接会被掐断
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache"},
+    )
