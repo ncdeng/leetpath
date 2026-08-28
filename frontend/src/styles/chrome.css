@@ -1,1 +1,287 @@
-__FILE_2__
+/* ==========================================================================
+   chrome.css — 全局导航壳（信号 · 工具顶栏）
+   桌面 ≥1024px：masthead（品牌行 + 发丝栏目条），sticky 磨砂
+   移动 ≤1023px：品牌行折叠为顶栏 + 底部 Tab Bar
+   ========================================================================== */
+
+.app-shell { min-height: 100vh; }
+
+/* ---------- 品牌行（桌面 + 移动共用的第一行） ---------- */
+.masthead {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: var(--material);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  /* 单根发丝线：顶栏与正文的分界 */
+  border-bottom: 1px solid var(--border);
+}
+.masthead-inner {
+  max-width: none;
+  margin: 0;
+  padding: 0 48px;
+}
+.masthead-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 0 11px;
+}
+.masthead-brand {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  min-width: 0;
+}
+.masthead-brand .brand {
+  font-family: var(--display-font);
+  font-weight: 800;
+  font-size: 21px;
+  letter-spacing: var(--display-tracking);
+  color: var(--text);
+  white-space: nowrap;
+}
+.masthead-brand .brand:hover { text-decoration: none; }
+.masthead-brand .brand .path { color: var(--accent); }
+.brand-version {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-faint);
+  border: 1px solid var(--border-strong);
+  padding: 1px 6px;
+  border-radius: 3px;
+  user-select: none;
+  letter-spacing: 0.04em;
+}
+/* 刊号行：报纸式的版次注记 */
+.masthead-edition {
+  margin-left: 10px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.masthead-controls {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+}
+
+/* 圆形控件按钮（品牌行/移动端共用） */
+.topbar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-dim);
+  min-width: 32px;
+  height: 32px;
+  padding: 0 6px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+.topbar-btn:hover {
+  background: var(--surface);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+.topbar-btn .mono { font-size: 12px; }
+
+/* 主题选择器下拉 */
+.theme-picker { position: relative; }
+.theme-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 2;
+  min-width: 168px;
+  background: var(--material-strong);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  border: 0.5px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-lg);
+  padding: 5px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  animation: theme-menu-in 0.16s ease;
+}
+@keyframes theme-menu-in {
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+}
+.theme-menu button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 550;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+  text-align: left;
+}
+.theme-menu button:hover { background: var(--surface-2); color: var(--text); }
+.theme-menu button.active { color: var(--accent); font-weight: 700; }
+.theme-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: none;
+  border: 0.5px solid rgba(0, 0, 0, 0.15);
+}
+.theme-menu .check { margin-left: auto; color: var(--accent); display: inline-flex; }
+.theme-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+}
+
+/* 用户区 */
+.masthead-user {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 4px;
+}
+.masthead-user .user-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: inherit;
+  text-decoration: none;
+  border-radius: 8px;
+  padding: 3px 8px 3px 3px;
+  border: 1px solid transparent;
+  transition: all 0.2s ease;
+  min-width: 0;
+}
+.masthead-user .user-chip:hover {
+  background: var(--surface);
+  border-color: var(--border-strong);
+}
+.masthead-user .username {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 120px;
+}
+
+/* ---------- 栏目条（发丝规线上的栏目导航） ---------- */
+.masthead-nav {
+  display: flex;
+  gap: 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-top: 0.5px solid var(--border);
+}
+.masthead-nav::-webkit-scrollbar { display: none; }
+.masthead-nav a {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 13px 10px;
+  font-size: 13.5px;
+  font-weight: 550;
+  letter-spacing: 0.02em;
+  color: var(--text-dim);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color 0.2s ease;
+}
+.masthead-nav a:hover { color: var(--text); text-decoration: none; }
+.masthead-nav a.active {
+  color: var(--accent);
+  font-weight: 700;
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+.masthead-nav a .tab-icon { display: inline-flex; opacity: 0.85; }
+
+.main-pane { min-width: 0; }
+
+@media (min-width: 1800px) {
+  .masthead-inner { padding: 0 64px; }
+}
+
+/* ---------- 移动端底栏（Tab Bar） ---------- */
+.bottom-tabs {
+  display: none;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: var(--bottom-nav-h);
+  background: var(--material);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  border-top: 0.5px solid var(--border-strong);
+  z-index: 50;
+  justify-content: flex-start;
+  align-items: stretch;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 0 4px env(safe-area-inset-bottom);
+}
+.bottom-tabs::-webkit-scrollbar { display: none; }
+.bottom-tabs a {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-faint);
+  text-decoration: none;
+  flex: 1 0 auto;
+  min-width: 56px;
+  padding: 6px 0 4px;
+  transition: color 0.2s ease;
+}
+.bottom-tabs a:hover { text-decoration: none; }
+.bottom-tabs a.active { color: var(--accent); }
+.bottom-tabs .tab-icon { display: inline-flex; }
+
+/* ---------- 移动端（≤1023px）：品牌行折叠为顶栏 + 底栏 ---------- */
+@media (max-width: 1023px) {
+  /* 需与 base.css 主题块（:root[data-theme]）同优先级，靠加载顺序覆盖 */
+  :root, :root[data-theme] { --bottom-nav-h: calc(56px + env(safe-area-inset-bottom)); }
+
+  .masthead { border-bottom: 0.5px solid var(--border-strong); }
+  .masthead-inner { padding: 0 16px; }
+  .masthead-top { padding: 0; height: var(--topbar-h); }
+  .masthead-brand .brand { font-size: 19px; }
+  .masthead-edition,
+  .masthead-nav,
+  .brand-version,
+  .desktop-only,
+  .masthead-user .username { display: none; }
+
+  .bottom-tabs { display: flex; }
+  body { padding-bottom: var(--bottom-nav-h); }
+}
