@@ -146,7 +146,7 @@ export function isFinal(s: SubmissionStatus): boolean {
   return FINAL_STATUSES.includes(s)
 }
 
-export type QuizQuestionType = 'single' | 'multiple' | 'judge'
+export type QuizQuestionType = 'single' | 'multiple' | 'judge' | 'open'
 
 export interface QuizBank {
   bank: string
@@ -165,6 +165,8 @@ export interface QuizQuestionItem {
   ordinal: number
   stem: string
   options: Record<string, string>
+  tags?: string[]
+  answer_status?: string | null
   is_answered: boolean
   is_correct: boolean | null
   user_answer: string | null

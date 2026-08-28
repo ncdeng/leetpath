@@ -10,7 +10,7 @@ from sqlalchemy import delete as sql_delete
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import QuizQuestion, QuizRecord, QuizSolveEvent
+from app.models import QUIZ_TYPES, QuizQuestion, QuizRecord, QuizSolveEvent
 
 DEFAULT_JSON_PATH = Path(__file__).resolve().parent / "quiz_questions.json"
 
@@ -49,6 +49,12 @@ def _remap_choice_answer(user_answer: str, letter_map: dict[str, str]) -> str:
 
 def assign_category(bank: str) -> str:
     """根据专题名称归类到一级大分类"""
+    if bank == "oncall-course" or "项目八股" in bank or "OnCall" in bank:
+        return "OnCall项目"
+    if "面经项目知识点" in bank or "项目知识点" in bank:
+        return "面经项目知识点"
+    if bank.startswith("秋招-八股") or bank == "秋招-八股":
+        return "八股"
     if "杀手" in bank:
         return "反直觉杀手题"
     if "强化学习" in bank:
@@ -185,6 +191,48 @@ def parse_quiz_txt(file_path: Path) -> list[dict]:
     return questions
 
 
+def _as_options(raw: object) -> dict[str, str]:
+    if isinstance(raw, dict):
+        return {str(k): str(v) for k, v in raw.items()}
+    return {}
+
+
+def _as_tags(raw: object) -> list[str]:
+    if isinstance(raw, list):
+        return [str(t).strip() for t in raw if str(t).strip()]
+    if isinstance(raw, str) and raw.strip():
+        return [raw.strip()]
+    return []
+
+
+def coerce_quiz_item(item: dict) -> dict:
+    """把种子条目规范成 loader 内部格式；兼容空 options 的问答题。"""
+    bank = str(item["bank"])
+    options = _as_options(item.get("options"))
+    q_type = item.get("type") or ("open" if not options else "single")
+    if q_type not in QUIZ_TYPES:
+        q_type = "open" if not options else "single"
+    ordinal = item.get("ordinal", item.get("n"))
+    if ordinal is None:
+        raise ValueError(f"quiz item missing ordinal: {item.get('stem', '')[:40]}")
+    analysis = item.get("analysis") or item.get("answer_draft") or ""
+    answer = item.get("answer") or ""
+    if q_type == "open":
+        options = {}
+        answer = ""
+    return {
+        "bank": bank,
+        "category": item.get("category") or assign_category(bank),
+        "ordinal": int(ordinal),
+        "type": q_type,
+        "stem": item["stem"],
+        "options": options,
+        "answer": answer,
+        "analysis": analysis,
+        "tags": _as_tags(item.get("tags")),
+    }
+
+
 def export_quiz_json(txt_path: Path, json_path: Path = DEFAULT_JSON_PATH) -> int:
     """将 txt 题库解析并保存为 json"""
     questions = parse_quiz_txt(txt_path)
@@ -212,9 +260,11 @@ def load_quiz_questions(
 
     if path.suffix == ".json":
         raw = json.loads(path.read_text(encoding="utf-8"))
-        questions = raw
+        if isinstance(raw, dict) and "items" in raw:
+            raw = raw["items"]
+        questions = [coerce_quiz_item(item) for item in raw]
     else:
-        questions = parse_quiz_txt(path)
+        questions = [coerce_quiz_item(item) for item in parse_quiz_txt(path)]
 
     if not questions:
         return 0
@@ -251,10 +301,13 @@ def load_quiz_questions(
                     options=item["options"],
                     answer=item["answer"],
                     analysis=item["analysis"],
+                    tags=item.get("tags") or [],
                 )
                 session.add(q_obj)
             else:
-                letter_map = _option_letter_map(q_obj.options or {}, item["options"])
+                letter_map = None
+                if item["type"] != "open":
+                    letter_map = _option_letter_map(q_obj.options or {}, item["options"])
                 if letter_map is not None:
                     from app.routers.quiz import _normalize_answer
 
@@ -277,6 +330,7 @@ def load_quiz_questions(
                 q_obj.options = item["options"]
                 q_obj.answer = item["answer"]
                 q_obj.analysis = item["analysis"]
+                q_obj.tags = item.get("tags") or []
             imported_count += 1
 
         # 正式题库 JSON 是全量快照：JSON 里没有的题从库中删掉（含作答与首次答对记录）。

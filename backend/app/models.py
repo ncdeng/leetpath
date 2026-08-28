@@ -162,22 +162,23 @@ class Job(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
-QUIZ_TYPES = ("single", "multiple", "judge")
+QUIZ_TYPES = ("single", "multiple", "judge", "open")
 
 
 class QuizQuestion(Base):
-    """客观题题库（单选/多选/判断）"""
+    """八股题库（单选/多选/判断/问答）"""
     __tablename__ = "quiz_questions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     bank: Mapped[str] = mapped_column(String(128), index=True)  # 专题名，例如 "AI Agent 核心概念与架构"
     category: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)  # 大类分类
-    type: Mapped[str] = mapped_column(String(16), index=True)  # single / multiple / judge
+    type: Mapped[str] = mapped_column(String(16), index=True)  # single / multiple / judge / open
     ordinal: Mapped[int] = mapped_column(Integer)  # 题号
     stem: Mapped[str] = mapped_column(Text)  # 题干
-    options: Mapped[dict[str, str]] = mapped_column(JSON, default=dict)  # {"A": "...", "B": "..."}
-    answer: Mapped[str] = mapped_column(String(32))  # "B", "ACD", "正确", "错误"
-    analysis: Mapped[str] = mapped_column(Text)  # 考点与详细解析
+    options: Mapped[dict[str, str]] = mapped_column(JSON, default=dict)  # {"A": "...", "B": "..."}；问答题为空对象
+    answer: Mapped[str] = mapped_column(String(32))  # "B", "ACD", "正确", "错误"；问答题为空串
+    analysis: Mapped[str] = mapped_column(Text)  # 客观题解析；问答题存草稿答案
+    tags: Mapped[list[str]] = mapped_column(JSON, default=list)  # 如 skip / java；含 skip 的题默认不进今日路径
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
     records: Mapped[list["QuizRecord"]] = relationship(

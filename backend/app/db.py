@@ -131,6 +131,11 @@ def _apply_schema_updates(conn) -> None:
             conn.execute(text("ALTER TABLE users ADD COLUMN avatar_updated_at DATETIME"))
         if "token_version" not in user_cols:
             conn.execute(text("ALTER TABLE users ADD COLUMN token_version INTEGER DEFAULT 0"))
+    quiz_rows = conn.execute(text("PRAGMA table_info(quiz_questions)")).fetchall()
+    if quiz_rows:
+        quiz_cols = {row[1] for row in quiz_rows}
+        if "tags" not in quiz_cols:
+            conn.execute(text("ALTER TABLE quiz_questions ADD COLUMN tags JSON"))
     _ensure_job_tracks_delete_cascade(conn)
 
 

@@ -115,7 +115,7 @@
           <!-- 模拟考试提示 -->
           <div class="wrongbook-hint" v-if="currentTab === 'exam'">
             <AppIcon name="clock" :size="15" class="hint-icon" />
-            <span><strong>模拟测验</strong>：随机抽取 20 道客观题进行自测。</span>
+            <span><strong>模拟测验</strong>：随机抽取 20 道客观题进行自测（不含问答题）。</span>
             <button class="btn btn-xs btn-primary" @click="startNewExam">重新抽题</button>
           </div>
         </div>
@@ -172,7 +172,8 @@
               <span class="badge badge-source">{{ currentQ.bank }}</span>
               <span class="badge" :class="typeBadgeClass(currentQ.type)">{{ typeText(currentQ.type) }}</span>
               <span class="mono quiz-num-tag">#{{ currentQ.ordinal }}</span>
-              <span v-if="currentQ.is_answered" class="badge" :class="currentQ.is_correct ? 'badge-easy' : 'badge-hard'">
+              <span v-if="isOpenQuestion && currentQ.is_answered" class="badge badge-source">已对照草稿</span>
+              <span v-else-if="currentQ.is_answered" class="badge" :class="currentQ.is_correct ? 'badge-easy' : 'badge-hard'">
                 <AppIcon :name="currentQ.is_correct ? 'check' : 'x'" :size="11" />
                 {{ currentQ.is_correct ? '上次做对' : '上次做错' }}
               </span>
@@ -217,8 +218,30 @@
             <div class="quiz-stem-text markdown-body" v-html="renderMd(currentQ.stem)"></div>
           </div>
 
+          <!-- 问答题：题干 → 查看答案 → 草稿 -->
+          <div v-if="isOpenQuestion" class="quiz-open-panel">
+            <button
+              v-if="!openRevealed"
+              class="btn btn-primary"
+              :disabled="submitting"
+              @click="revealOpenAnswer"
+            >
+              查看答案
+            </button>
+            <p v-if="!openRevealed" class="muted open-hint">先自己口述一遍，点一下再对照草稿（非正式标准答案）。</p>
+            <div v-else class="quiz-analysis-box">
+              <div class="analysis-header">
+                <span class="analysis-title"><AppIcon name="book" :size="15" /> 参考答案 <span class="badge badge-source">草稿</span></span>
+                <button class="btn btn-xs btn-primary" @click="openAiDrawer">
+                  <AppIcon name="robot" :size="13" /> 和 AI 助教聊聊这题
+                </button>
+              </div>
+              <div class="statement analysis-content markdown-body" v-html="renderMd(currentQ.analysis || '')"></div>
+            </div>
+          </div>
+
           <!-- 选项列表 -->
-          <div class="quiz-options-grid">
+          <div class="quiz-options-grid" v-else>
             <!-- 单选 / 多选 / 判断 选项按钮 -->
             <button
               v-for="(text, key) in currentQ.options"
@@ -252,7 +275,7 @@
 
           <!-- 答题结果横幅 -->
           <transition name="fade">
-            <div v-if="currentResult || (currentQ.is_answered && currentQ.answer)" class="quiz-result-banner" :class="isCurrentCorrect ? 'res-correct' : 'res-wrong'">
+            <div v-if="!isOpenQuestion && (currentResult || (currentQ.is_answered && currentQ.answer))" class="quiz-result-banner" :class="isCurrentCorrect ? 'res-correct' : 'res-wrong'">
               <div class="res-icon"><AppIcon :name="isCurrentCorrect ? 'check' : 'x'" :size="20" /></div>
               <div class="res-msg">
                 <div class="res-title">
@@ -275,7 +298,7 @@
 
           <!-- 详细解析展示区 -->
           <transition name="fade">
-            <div v-if="currentResult?.analysis || (currentQ.is_answered && currentQ.analysis)" class="quiz-analysis-box">
+            <div v-if="!isOpenQuestion && (currentResult?.analysis || (currentQ.is_answered && currentQ.analysis))" class="quiz-analysis-box">
               <div class="analysis-header">
                 <span class="analysis-title"><AppIcon name="book" :size="15" /> 考点与详细解析</span>
                 <button class="btn btn-xs btn-ghost" @click="openAiDrawer">
@@ -307,7 +330,8 @@
 
             <!-- 快捷键提示条（触屏端隐藏） -->
             <div class="quiz-keyboard-tips">
-              <span class="kbd-tip"><kbd>1-4</kbd> / <kbd>A-D</kbd> 选择</span>
+              <span class="kbd-tip" v-if="!isOpenQuestion"><kbd>1-4</kbd> / <kbd>A-D</kbd> 选择</span>
+              <span class="kbd-tip" v-else><kbd>Enter</kbd> 查看答案</span>
               <span class="kbd-tip"><kbd>Enter</kbd> 提交/下一题</span>
               <span class="kbd-tip"><kbd>←</kbd> <kbd>→</kbd> 切题</span>
             </div>
@@ -321,7 +345,7 @@
       <div class="banks-header card">
         <div class="banks-header-info">
           <h2>{{ bankCount }} 个大模型与算法核心专题库</h2>
-          <p class="muted">涵盖 Agent Harness、MCP/Skills、Transformer、RAG、强化学习、训练微调与反直觉杀手题，点击专题直接开启专项刷题。</p>
+          <p class="muted">涵盖 OnCall 项目问答、面经项目知识点、八股，以及 Agent Harness、MCP/Skills、Transformer、RAG，点击专题直接刷。</p>
         </div>
       </div>
 
@@ -413,14 +437,35 @@ const multiSelected = ref<string[]>([])
 const currentResult = ref<QuizAnswerResult | null>(null)
 
 const currentQ = computed(() => questions.value[currentIndex.value])
+const isOpenQuestion = computed(() => currentQ.value?.type === 'open')
+const openRevealed = computed(() => {
+  const q = currentQ.value
+  if (!q || q.type !== 'open') return false
+  return Boolean(q.analysis) || q.is_answered
+})
 
-function openAiDrawer() {
+async function openAiDrawer() {
+  if (isOpenQuestion.value && currentQ.value && !openRevealed.value) {
+    await revealOpenAnswer()
+  }
   aiDrawerVisible.value = true
 }
 
 const aiContext = computed(() => {
   const q = currentQ.value
   if (!q) return ''
+  if (q.type === 'open') {
+    const draft = q.analysis || '（尚未揭晓草稿）'
+    return `【所属专题】：${q.bank} (${q.category || ''})
+【题型】：问答题（答案为草稿，非正式标准答案）
+【题干】：
+${q.stem}
+
+【草稿答案】：
+${draft}
+
+请按面试深挖来讨论，指出草稿里可以补强或纠正的点。如需写代码，只用 Python3 或 C++。`
+  }
   const optStr = Object.entries(q.options || {})
     .map(([k, v]) => `${k}. ${v}`)
     .join('\n')
@@ -440,6 +485,22 @@ ${currentResult.value?.analysis || q.analysis || '暂无官方解析'}`
 
 const quizPresetPrompts = computed<PromptPreset[]>(() => {
   const q = currentQ.value
+  if (q?.type === 'open') {
+    return [
+      {
+        label: '按面试官追问这题',
+        prompt: '请扮演面试官，基于题干和这份草稿答案追问 2-3 个深挖问题，并给出简要作答要点。草稿不是标准答案，请标出可以补强的地方。',
+      },
+      {
+        label: '帮我把草稿讲圆',
+        prompt: '请把这份草稿整理成 60 秒口头版本：先讲痛点与目标，再讲方案与结果，最后补一个可追问的技术细节。',
+      },
+      {
+        label: '草稿里有哪些坑',
+        prompt: '请指出这份草稿里不严谨、过时或容易被面试官抓住的表述，并给出更稳妥的说法。不要编造项目经历。',
+      },
+    ]
+  }
   const userAns = currentResult.value?.user_answer || q?.user_answer
   const isWrong = userAns && !isCurrentCorrect.value
   const list: PromptPreset[] = []
@@ -482,7 +543,7 @@ const groupedBanks = computed(() => {
     })
   }
   const ordered: Record<string, QuizBank[]> = {}
-  const preferred = ['AI Agent 与智能体']
+  const preferred = ['OnCall项目', '面经项目知识点', '八股', 'AI Agent 与智能体']
   for (const cat of preferred) {
     if (map[cat]) ordered[cat] = map[cat]
   }
@@ -519,10 +580,12 @@ function typeText(t: QuizQuestionType) {
   if (t === 'single') return '单选题'
   if (t === 'multiple') return '多选题'
   if (t === 'judge') return '判断题'
+  if (t === 'open') return '问答题'
   return '客观题'
 }
 
 function typeBadgeClass(t: QuizQuestionType) {
+  if (t === 'open') return 'badge-source'
   if (t === 'single') return 'badge-easy'
   if (t === 'multiple') return 'badge-medium'
   return 'badge-hard'
@@ -567,20 +630,25 @@ async function fetchQuestions() {
   currentResult.value = null
   multiSelected.value = []
   try {
-    let url = '/api/quiz/questions?limit=800'
+    const params = new URLSearchParams()
     if (currentTab.value === 'wrongbook') {
-      url += '&status=wrong'
+      params.set('status', 'wrong')
     } else if (currentTab.value === 'favorites') {
-      url += '&status=favorited'
+      params.set('status', 'favorited')
     } else if (currentTab.value === 'exam') {
-      url += '&limit=20&random_order=true'
+      params.set('limit', '20')
+      params.set('random_order', 'true')
+      params.set('exclude_open', 'true')
     } else {
-      if (selectedBank.value) url += `&bank=${encodeURIComponent(selectedBank.value)}`
-      if (onlyUnanswered.value) url += '&status=unanswered'
-      if (randomOrder.value) url += '&random_order=true'
+      if (selectedBank.value) params.set('bank', selectedBank.value)
+      if (onlyUnanswered.value) params.set('status', 'unanswered')
+      if (randomOrder.value) params.set('random_order', 'true')
     }
 
-    const res = await api.get<{ total: number; items: QuizQuestionItem[] }>(url)
+    const qs = params.toString()
+    const res = await api.get<{ total: number; items: QuizQuestionItem[] }>(
+      qs ? `/api/quiz/questions?${qs}` : '/api/quiz/questions',
+    )
     questions.value = res.items
     if (
       currentTab.value === 'practice' &&
@@ -589,7 +657,7 @@ async function fetchQuestions() {
     ) {
       selectedBank.value = ''
       const retry = await api.get<{ total: number; items: QuizQuestionItem[] }>(
-        '/api/quiz/questions?limit=800',
+        '/api/quiz/questions',
       )
       questions.value = retry.items
     }
@@ -607,6 +675,32 @@ function navigateQuestion(idx: number) {
   currentIndex.value = idx
   currentResult.value = null
   multiSelected.value = []
+}
+
+async function revealOpenAnswer() {
+  const q = currentQ.value
+  if (!q || q.type !== 'open' || submitting.value) return
+  if (q.analysis) {
+    q.is_answered = true
+    return
+  }
+  submitting.value = true
+  try {
+    const res = await api.post<{
+      id: number
+      analysis: string
+      answer_status: string
+      is_answered: boolean
+    }>(`/api/quiz/questions/${q.id}/reveal`)
+    q.analysis = res.analysis
+    q.is_answered = true
+    q.answer_status = res.answer_status || 'draft'
+    await loadStatsAndBanks()
+  } catch {
+    toast.error('揭晓答案失败，请重试')
+  } finally {
+    submitting.value = false
+  }
 }
 
 // 选项样式判定
@@ -670,7 +764,7 @@ function isOptionUserWrong(key: string) {
 // 点击选项
 async function onOptionClick(key: string) {
   const q = currentQ.value
-  if (!q || submitting.value) return
+  if (!q || submitting.value || q.type === 'open') return
 
   // 严格防作弊锁定：如果本题已作答过，坚决不允许再次点击修改答案
   if (currentResult.value !== null || q.is_answered) {
@@ -800,7 +894,7 @@ function onKey(e: KeyboardEvent) {
     'D': 'D',
   }
 
-  if (keyMap[key] && currentQ.value.options[keyMap[key]]) {
+  if (keyMap[key] && currentQ.value.type !== 'open' && currentQ.value.options?.[keyMap[key]]) {
     e.preventDefault()
     onOptionClick(keyMap[key])
     return
@@ -809,7 +903,9 @@ function onKey(e: KeyboardEvent) {
   // Enter / Space：提交多选或切下一题
   if (e.key === 'Enter') {
     e.preventDefault()
-    if (currentQ.value.type === 'multiple' && !currentResult.value && !currentQ.value.is_answered) {
+    if (currentQ.value.type === 'open' && !openRevealed.value) {
+      revealOpenAnswer()
+    } else if (currentQ.value.type === 'multiple' && !currentResult.value && !currentQ.value.is_answered) {
       submitMultiAnswer()
     } else if (currentIndex.value < questions.value.length - 1) {
       navigateQuestion(currentIndex.value + 1)

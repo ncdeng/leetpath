@@ -481,3 +481,292 @@ def test_judge_grades_by_option_text_after_ab_swap(admin_client):
     assert ok.status_code == 200
     assert ok.json()["is_correct"] is True
     assert ok.json()["correct_answer"] == "错误"
+
+
+def test_quiz_seed_includes_oncall_open_ended():
+    from pathlib import Path
+    import json
+
+    path = Path(__file__).resolve().parents[1] / "app" / "seed" / "quiz_questions.json"
+    questions = json.loads(path.read_text(encoding="utf-8"))
+    oncall = [q for q in questions if q["bank"] == "oncall-course"]
+    proj = [q for q in questions if q["bank"] == "面经项目知识点"]
+    bagu = [q for q in questions if q["bank"] == "秋招-八股"]
+    legacy = [q for q in questions if q["bank"] not in {"oncall-course", "面经项目知识点", "秋招-八股"}]
+    assert len(questions) == 670 + 63 + 369 + 232
+    assert len(legacy) == 670
+    assert len(oncall) == 63
+    assert len(proj) == 369
+    assert len(bagu) == 232
+    assert all(q["type"] in {"single", "multiple", "judge"} for q in legacy)
+    assert all(q["type"] == "open" for q in oncall + proj + bagu)
+    assert all(q.get("category") == "面经项目知识点" for q in proj)
+    assert all(q.get("category") == "八股" for q in bagu)
+    assert all(q["category"] == "OnCall项目" for q in oncall)
+    assert all(q.get("options") in ({}, None, []) for q in oncall + proj + bagu)
+    java_skip = {
+        q["ordinal"]
+        for q in oncall
+        if "skip" in (q.get("tags") or []) and "java" in (q.get("tags") or [])
+    }
+    assert java_skip == {2, 3, 4, 5}
+    assert all(q.get("analysis") for q in oncall + proj + bagu)
+    # 秋招源表 45 道手撕走算法题库，不得进 /quiz（不少题干没有【手撕】前缀）
+    assert not any(
+        "手撕" in (q.get("bank") or "") or (q.get("category") or "") == "手撕"
+        for q in questions
+    )
+    stems = "\n".join(q.get("stem") or "" for q in questions)
+    for needle in (
+        "【手撕】",
+        "LC11 盛最多水的容器",
+        "固定容量队列，push/pop都要O(1)",
+        "k个一组翻转链表",
+        "一维列表转树",
+        "岛屿最大面积（LC695）",
+        "Hot100 最大矩形（LC85）",
+        "图像差异最小包围矩形求解",
+        "T4 基环树DP",
+    ):
+        assert needle not in stems
+
+
+def test_quiz_list_omitted_or_zero_limit_returns_all(admin_client):
+    from app import db as dbmod
+    from app.models import QuizQuestion
+
+    with dbmod.SessionLocal() as db:
+        db.add_all(
+            [
+                QuizQuestion(
+                    bank="full-bank",
+                    category="t",
+                    type="single",
+                    ordinal=i,
+                    stem=f"题 {i}",
+                    options={"A": "1", "B": "2"},
+                    answer="A",
+                    analysis="x",
+                )
+                for i in range(1, 121)
+            ]
+        )
+        db.commit()
+
+    omitted = admin_client.get("/api/quiz/questions?bank=full-bank").json()
+    assert omitted["total"] == 120
+    assert len(omitted["items"]) == 120
+    zero = admin_client.get("/api/quiz/questions?bank=full-bank&limit=0").json()
+    assert len(zero["items"]) == 120
+    paged = admin_client.get("/api/quiz/questions?bank=full-bank&limit=20").json()
+    assert paged["total"] == 120
+    assert len(paged["items"]) == 20
+    assert admin_client.get("/api/quiz/questions?limit=3001").status_code == 200
+    assert admin_client.get("/api/quiz/questions?limit=-1").status_code == 422
+
+
+def test_quiz_loader_imports_open_ended_empty_options(admin_client, tmp_path):
+    import json
+
+    from sqlalchemy import select
+
+    from app import db as dbmod
+    from app.models import QuizQuestion
+    from app.seed.quiz_loader import load_quiz_questions
+
+    payload = [
+        {
+            "bank": "oncall-course",
+            "category": "OnCall项目",
+            "ordinal": 1,
+            "type": "open",
+            "stem": "简单介绍一下这个项目",
+            "options": [],
+            "answer": "",
+            "answer_draft": "这是一段课程草稿答案。",
+            "tags": ["python"],
+        },
+        {
+            "bank": "oncall-course",
+            "category": "OnCall项目",
+            "n": 2,
+            "type": "open",
+            "stem": "简单说说Eino是什么框架",
+            "options": [],
+            "answer_draft": "Eino 是图编排框架。",
+            "tags": ["skip", "java"],
+        },
+    ]
+    path = tmp_path / "open.json"
+    path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    assert load_quiz_questions(path) == 2
+
+    with dbmod.SessionLocal() as db:
+        rows = list(
+            db.scalars(
+                select(QuizQuestion)
+                .where(QuizQuestion.bank == "oncall-course")
+                .order_by(QuizQuestion.ordinal)
+            ).all()
+        )
+        assert len(rows) == 2
+        assert rows[0].type == "open"
+        assert rows[0].options == {}
+        assert rows[0].answer == ""
+        assert rows[0].analysis == "这是一段课程草稿答案。"
+        assert rows[0].tags == ["python"]
+        assert rows[1].tags == ["skip", "java"]
+
+
+def test_open_ended_reveal_and_empty_options_list(admin_client):
+    from app import db as dbmod
+    from app.models import QuizQuestion
+
+    with dbmod.SessionLocal() as db:
+        q = QuizQuestion(
+            bank="oncall-course",
+            category="OnCall项目",
+            type="open",
+            ordinal=1,
+            stem="简单介绍一下这个项目",
+            options={},
+            answer="",
+            analysis="课程草稿：基于真实 OnCall 痛点做了 Agent。",
+            tags=["python"],
+        )
+        skip_q = QuizQuestion(
+            bank="oncall-course",
+            category="OnCall项目",
+            type="open",
+            ordinal=2,
+            stem="简单说说Eino是什么框架",
+            options={},
+            answer="",
+            analysis="Eino 草稿。",
+            tags=["skip", "java"],
+        )
+        db.add_all([q, skip_q])
+        db.commit()
+        qid, skip_id = q.id, skip_q.id
+
+    listed = admin_client.get("/api/quiz/questions?bank=oncall-course").json()
+    assert listed["total"] == 2
+    item = next(x for x in listed["items"] if x["id"] == qid)
+    assert item["type"] == "open"
+    assert item["options"] == {}
+    assert item["answer"] is None
+    assert item["analysis"] is None
+    assert item["answer_status"] == "draft"
+    assert item["tags"] == ["python"]
+
+    bad = admin_client.post(f"/api/quiz/questions/{qid}/answer", json={"user_answer": "A"})
+    assert bad.status_code == 400
+
+    revealed = admin_client.post(f"/api/quiz/questions/{qid}/reveal")
+    assert revealed.status_code == 200
+    body = revealed.json()
+    assert "OnCall" in body["analysis"]
+    assert body["answer_status"] == "draft"
+
+    after = admin_client.get(f"/api/quiz/questions/{qid}").json()
+    assert after["is_answered"] is True
+    assert after["analysis"].startswith("课程草稿")
+    assert after["answer"] is None
+
+    oncall_bank = next(
+        item for item in admin_client.get("/api/quiz/banks").json()
+        if item["bank"] == "oncall-course"
+    )
+    assert oncall_bank["answered"] == 1
+    assert oncall_bank["correct"] == 0
+    assert oncall_bank["wrong"] == 0
+    stats = admin_client.get("/api/quiz/stats").json()
+    assert stats["answered_count"] == 1
+    assert stats["correct_count"] == 0
+    assert stats["accuracy_rate"] == 0.0
+
+    skipped = admin_client.get("/api/quiz/questions?exclude_skipped=true").json()["items"]
+    assert all(it["id"] != skip_id for it in skipped)
+    assert any(it["id"] == qid for it in skipped)
+
+    today = admin_client.get("/api/quiz/today?limit=10").json()
+    today_ids = {it["id"] for it in today["items"]}
+    assert skip_id not in today_ids
+    assert qid in today_ids
+
+
+def test_exam_excludes_open_and_skipped(admin_client):
+    from app import db as dbmod
+    from app.models import QuizQuestion
+
+    with dbmod.SessionLocal() as db:
+        db.add_all(
+            [
+                QuizQuestion(
+                    bank="客观库",
+                    category="t",
+                    type="single",
+                    ordinal=1,
+                    stem="客观题",
+                    options={"A": "1", "B": "2"},
+                    answer="A",
+                    analysis="x",
+                    tags=["python"],
+                ),
+                QuizQuestion(
+                    bank="oncall-course",
+                    category="OnCall项目",
+                    type="open",
+                    ordinal=9,
+                    stem="问答题",
+                    options={},
+                    answer="",
+                    analysis="草稿",
+                    tags=["python"],
+                ),
+                QuizQuestion(
+                    bank="oncall-course",
+                    category="OnCall项目",
+                    type="open",
+                    ordinal=2,
+                    stem="Java 题",
+                    options={},
+                    answer="",
+                    analysis="java 草稿",
+                    tags=["skip", "java"],
+                ),
+            ]
+        )
+        db.commit()
+
+    exam = admin_client.get(
+        "/api/quiz/questions?limit=20&random_order=true&exclude_skipped=true&exclude_open=true"
+    ).json()["items"]
+    assert exam
+    assert all(it["type"] != "open" for it in exam)
+    assert all("skip" not in (it.get("tags") or []) for it in exam)
+
+
+def test_ensure_schema_adds_quiz_tags_column(tmp_path):
+    from sqlalchemy import create_engine, text
+
+    from app.db import ensure_schema
+
+    db_path = tmp_path / "legacy.db"
+    engine = create_engine(f"sqlite:///{db_path.as_posix()}", future=True)
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "CREATE TABLE problems (id INTEGER PRIMARY KEY, slug VARCHAR(128), title VARCHAR(255))"
+            )
+        )
+        conn.execute(
+            text(
+                "CREATE TABLE quiz_questions (id INTEGER PRIMARY KEY, bank VARCHAR(128), type VARCHAR(16))"
+            )
+        )
+    ensure_schema(engine)
+    with engine.connect() as conn:
+        cols = {row[1] for row in conn.execute(text("PRAGMA table_info(quiz_questions)"))}
+    assert "tags" in cols
+    ensure_schema(engine)

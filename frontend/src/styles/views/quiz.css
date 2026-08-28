@@ -396,6 +396,14 @@
   flex: none;
 }
 
+/* 问答题：先题干再揭草稿 */
+.quiz-open-panel {
+  margin: 8px 0 20px;
+}
+.quiz-open-panel .open-hint {
+  margin-top: 10px;
+}
+
 /* 解析盒：surface-2 大圆角块 */
 .quiz-analysis-box {
   border-radius: var(--radius-lg);
