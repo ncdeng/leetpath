@@ -14,12 +14,28 @@ import {
   parseCssPx,
   parseLauncherChrome,
   saveLauncherChrome,
+  shouldHideCapsule,
   bottomClearancePx,
   clampPoint,
 } from './aiLauncherChrome.ts'
 
 const IPHONE = { width: 390, height: 844 }
 const DESKTOP = { width: 1440, height: 900 }
+
+describe('shouldHideCapsule', () => {
+  it('hides the duplicate launcher on compact routes with an inline AI entry', () => {
+    assert.equal(shouldHideCapsule({ hasInlineAi: true }, true), true)
+  })
+
+  it('keeps the launcher on desktop even when the route has an inline AI entry', () => {
+    assert.equal(shouldHideCapsule({ hasInlineAi: true }, false), false)
+  })
+
+  it('keeps the launcher on compact routes without an inline AI entry', () => {
+    assert.equal(shouldHideCapsule({}, true), false)
+    assert.equal(shouldHideCapsule({ hasInlineAi: false }, true), false)
+  })
+})
 
 describe('bottomClearancePx', () => {
   it('parks above the 56px tab bar + iOS safe area + gap on iPhone widths', () => {

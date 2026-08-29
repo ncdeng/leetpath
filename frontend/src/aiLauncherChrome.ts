@@ -40,6 +40,13 @@ export interface DragSession {
   initY: number
 }
 
+export function shouldHideCapsule(
+  routeMeta: Readonly<{ hasInlineAi?: boolean }>,
+  isCompactViewport: boolean,
+): boolean {
+  return isCompactViewport && routeMeta.hasInlineAi === true
+}
+
 export function isMobileWidth(width: number): boolean {
   return width <= MOBILE_MAX_WIDTH
 }
