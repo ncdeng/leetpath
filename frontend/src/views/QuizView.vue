@@ -220,20 +220,23 @@
 
           <!-- 问答题：题干 → 查看答案 → 草稿 -->
           <div v-if="isOpenQuestion" class="quiz-open-panel">
-            <button
-              v-if="!openRevealed"
-              class="btn btn-primary"
-              :disabled="submitting"
-              @click="revealOpenAnswer"
-            >
-              查看答案
-            </button>
-            <p v-if="!openRevealed" class="muted open-hint">先自己口述一遍，点一下再对照草稿（非正式标准答案）。</p>
+            <div v-if="!openRevealed" class="quiz-open-unrevealed card">
+              <button
+                class="btn btn-primary btn-reveal"
+                :disabled="submitting"
+                @click="revealOpenAnswer"
+              >
+                <AppIcon name="sparkle" :size="15" /> 查看参考草稿
+              </button>
+              <p class="muted open-hint">
+                <AppIcon name="book" :size="13" /> 建议先在心里口述 2~3 个核心要点，点击查看参考草稿，亦可随时唤起 AI 导师深挖追问。
+              </p>
+            </div>
             <div v-else class="quiz-analysis-box">
               <div class="analysis-header">
-                <span class="analysis-title"><AppIcon name="book" :size="15" /> 参考答案 <span class="badge badge-source">草稿</span></span>
+                <span class="analysis-title"><AppIcon name="book" :size="15" /> 考点与参考草稿 <span class="badge badge-source">草稿</span></span>
                 <button class="btn btn-xs btn-primary" @click="openAiDrawer">
-                  <AppIcon name="robot" :size="13" /> 和 AI 助教聊聊这题
+                  <AppIcon name="robot" :size="13" /> 追问 AI 导师 / 举工业例子
                 </button>
               </div>
               <div class="statement analysis-content markdown-body" v-html="renderMd(currentQ.analysis || '')"></div>
@@ -331,8 +334,7 @@
             <!-- 快捷键提示条（触屏端隐藏） -->
             <div class="quiz-keyboard-tips">
               <span class="kbd-tip" v-if="!isOpenQuestion"><kbd>1-4</kbd> / <kbd>A-D</kbd> 选择</span>
-              <span class="kbd-tip" v-else><kbd>Enter</kbd> 查看答案</span>
-              <span class="kbd-tip"><kbd>Enter</kbd> 提交/下一题</span>
+              <span class="kbd-tip"><kbd>Enter</kbd> {{ enterHint }}</span>
               <span class="kbd-tip"><kbd>←</kbd> <kbd>→</kbd> 切题</span>
             </div>
           </div>
@@ -409,6 +411,14 @@ import AiTutorDrawer, { type PromptPreset } from '../components/AiTutorDrawer.vu
 import AppIcon from '../components/AppIcon.vue'
 import Skeleton from '../components/Skeleton.vue'
 import { renderMarkdown } from '../markdown'
+import { createGenerationGate } from '../problemDraftSession'
+import {
+  buildQuizQuestionParams,
+  isCurrentQuestionRequest,
+  quizEnterHint,
+  type QuizQuestionFilters,
+  type QuizTab,
+} from '../quizQuestionSession'
 import { useToast } from '../stores/toast'
 import type {
   QuizAnswerResult,
@@ -420,7 +430,7 @@ import type {
 
 const toast = useToast()
 
-const currentTab = ref<'practice' | 'wrongbook' | 'banks' | 'favorites' | 'exam'>('practice')
+const currentTab = ref<QuizTab>('practice')
 const loading = ref(true)
 const submitting = ref(false)
 const stats = ref<QuizStats | null>(null)
@@ -436,6 +446,10 @@ const currentIndex = ref(0)
 const multiSelected = ref<string[]>([])
 const currentResult = ref<QuizAnswerResult | null>(null)
 
+const fetchGeneration = createGenerationGate()
+const questionGeneration = createGenerationGate()
+const statsGeneration = createGenerationGate()
+
 const currentQ = computed(() => questions.value[currentIndex.value])
 const isOpenQuestion = computed(() => currentQ.value?.type === 'open')
 const openRevealed = computed(() => {
@@ -443,10 +457,19 @@ const openRevealed = computed(() => {
   if (!q || q.type !== 'open') return false
   return Boolean(q.analysis) || q.is_answered
 })
+const enterHint = computed(() => quizEnterHint(isOpenQuestion.value, openRevealed.value))
+
+function invalidateQuestionContext(): void {
+  questionGeneration.invalidate()
+  submitting.value = false
+  aiDrawerVisible.value = false
+}
 
 async function openAiDrawer() {
-  if (isOpenQuestion.value && currentQ.value && !openRevealed.value) {
-    await revealOpenAnswer()
+  const questionId = currentQ.value?.id
+  if (isOpenQuestion.value && questionId && !openRevealed.value) {
+    const revealed = await revealOpenAnswer()
+    if (!revealed || currentQ.value?.id !== questionId) return
   }
   aiDrawerVisible.value = true
 }
@@ -591,99 +614,110 @@ function typeBadgeClass(t: QuizQuestionType) {
   return 'badge-hard'
 }
 
-function switchTab(tab: 'practice' | 'wrongbook' | 'banks' | 'favorites' | 'exam') {
+function switchTab(tab: QuizTab) {
+  invalidateQuestionContext()
   currentTab.value = tab
   currentIndex.value = 0
   currentResult.value = null
   multiSelected.value = []
   if (tab !== 'banks') {
-    fetchQuestions()
+    void fetchQuestions()
+  } else {
+    fetchGeneration.invalidate()
+    loading.value = false
   }
 }
 
 function startBankPractice(bankName: string) {
   selectedBank.value = bankName
   currentTab.value = 'practice'
-  fetchQuestions()
+  void fetchQuestions()
 }
 
 function startNewExam() {
   currentTab.value = 'exam'
-  fetchQuestions()
+  void fetchQuestions()
 }
 
 async function loadStatsAndBanks() {
+  const generation = statsGeneration.next()
   try {
     const [s, b] = await Promise.all([
       api.get<QuizStats>(`/api/quiz/stats?tz_offset=${-new Date().getTimezoneOffset()}`),
       api.get<QuizBank[]>('/api/quiz/banks'),
     ])
-    stats.value = s
-    banks.value = b
+    if (statsGeneration.isCurrent(generation)) {
+      stats.value = s
+      banks.value = b
+    }
   } catch {
     // ignore
   }
 }
 
 async function fetchQuestions() {
+  const generation = fetchGeneration.next()
+  invalidateQuestionContext()
   loading.value = true
   currentResult.value = null
   multiSelected.value = []
+  const filters: QuizQuestionFilters = {
+    tab: currentTab.value,
+    selectedBank: selectedBank.value,
+    onlyUnanswered: onlyUnanswered.value,
+    randomOrder: randomOrder.value,
+  }
   try {
-    const params = new URLSearchParams()
-    if (currentTab.value === 'wrongbook') {
-      params.set('status', 'wrong')
-    } else if (currentTab.value === 'favorites') {
-      params.set('status', 'favorited')
-    } else if (currentTab.value === 'exam') {
-      params.set('limit', '20')
-      params.set('random_order', 'true')
-      params.set('exclude_open', 'true')
-    } else {
-      if (selectedBank.value) params.set('bank', selectedBank.value)
-      if (onlyUnanswered.value) params.set('status', 'unanswered')
-      if (randomOrder.value) params.set('random_order', 'true')
-    }
-
+    const params = buildQuizQuestionParams(filters)
     const qs = params.toString()
     const res = await api.get<{ total: number; items: QuizQuestionItem[] }>(
       qs ? `/api/quiz/questions?${qs}` : '/api/quiz/questions',
     )
-    questions.value = res.items
+    if (!fetchGeneration.isCurrent(generation)) return
+    let loadedQuestions = res.items
     if (
-      currentTab.value === 'practice' &&
-      selectedBank.value === HARNESS_BANK &&
+      filters.tab === 'practice' &&
+      filters.selectedBank === HARNESS_BANK &&
       res.items.length === 0
     ) {
+      if (!fetchGeneration.isCurrent(generation)) return
       selectedBank.value = ''
       const retry = await api.get<{ total: number; items: QuizQuestionItem[] }>(
         '/api/quiz/questions',
       )
-      questions.value = retry.items
+      if (!fetchGeneration.isCurrent(generation)) return
+      loadedQuestions = retry.items
     }
+    questions.value = loadedQuestions
     currentIndex.value = 0
     await loadStatsAndBanks()
   } catch {
-    toast.error('加载题目失败，请重试')
+    if (fetchGeneration.isCurrent(generation)) {
+      toast.error('加载题目失败，请重试')
+    }
   } finally {
-    loading.value = false
+    if (fetchGeneration.isCurrent(generation)) {
+      loading.value = false
+    }
   }
 }
 
 function navigateQuestion(idx: number) {
   if (idx < 0 || idx >= questions.value.length) return
+  invalidateQuestionContext()
   currentIndex.value = idx
   currentResult.value = null
   multiSelected.value = []
 }
 
-async function revealOpenAnswer() {
+async function revealOpenAnswer(): Promise<boolean> {
   const q = currentQ.value
-  if (!q || q.type !== 'open' || submitting.value) return
+  if (!q || q.type !== 'open' || submitting.value) return false
   if (q.analysis) {
     q.is_answered = true
-    return
+    return true
   }
+  const token = { generation: questionGeneration.next(), questionId: q.id }
   submitting.value = true
   try {
     const res = await api.post<{
@@ -692,14 +726,24 @@ async function revealOpenAnswer() {
       answer_status: string
       is_answered: boolean
     }>(`/api/quiz/questions/${q.id}/reveal`)
+    if (!isCurrentQuestionRequest(questionGeneration, token, currentQ.value?.id)) {
+      void loadStatsAndBanks()
+      return false
+    }
     q.analysis = res.analysis
     q.is_answered = true
     q.answer_status = res.answer_status || 'draft'
     await loadStatsAndBanks()
+    return isCurrentQuestionRequest(questionGeneration, token, currentQ.value?.id)
   } catch {
-    toast.error('揭晓答案失败，请重试')
+    if (isCurrentQuestionRequest(questionGeneration, token, currentQ.value?.id)) {
+      toast.error('揭晓答案失败，请重试')
+    }
+    return false
   } finally {
-    submitting.value = false
+    if (isCurrentQuestionRequest(questionGeneration, token, currentQ.value?.id)) {
+      submitting.value = false
+    }
   }
 }
 
@@ -795,11 +839,16 @@ async function submitMultiAnswer() {
 async function submitAnswer(ans: string) {
   const q = currentQ.value
   if (!q || submitting.value) return
+  const token = { generation: questionGeneration.next(), questionId: q.id }
   submitting.value = true
   try {
     const res = await api.post<QuizAnswerResult>(`/api/quiz/questions/${q.id}/answer`, {
       user_answer: ans,
     })
+    if (!isCurrentQuestionRequest(questionGeneration, token, currentQ.value?.id)) {
+      void loadStatsAndBanks()
+      return
+    }
     currentResult.value = res
     q.is_answered = true
     q.is_correct = res.is_correct
@@ -816,9 +865,13 @@ async function submitAnswer(ans: string) {
     }
     await loadStatsAndBanks()
   } catch {
-    toast.error('提交失败，请重试')
+    if (isCurrentQuestionRequest(questionGeneration, token, currentQ.value?.id)) {
+      toast.error('提交失败，请重试')
+    }
   } finally {
-    submitting.value = false
+    if (isCurrentQuestionRequest(questionGeneration, token, currentQ.value?.id)) {
+      submitting.value = false
+    }
   }
 }
 
@@ -930,6 +983,9 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  fetchGeneration.invalidate()
+  questionGeneration.invalidate()
+  statsGeneration.invalidate()
   window.removeEventListener('keydown', onKey)
 })
 </script>

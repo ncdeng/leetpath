@@ -363,7 +363,7 @@ def today_path(
         rec = user_records.get(q_obj.id)
         if q_obj.type == "open":
             return not _is_open_revealed(q_obj, rec)
-        return rec is None
+        return not _has_answered(rec)
 
     unanswered = [q_obj for q_obj in pool if _unanswered(q_obj)]
     answered = [q_obj for q_obj in pool if not _unanswered(q_obj)]
@@ -527,7 +527,7 @@ def reveal_open_answer(
         rec = QuizRecord(
             user_id=user.id,
             question_id=question_id,
-            is_correct=True,
+            is_correct=False,
             user_answer=VIEWED_OPEN_ANSWER,
             attempts_count=1,
             wrong_count=0,
@@ -538,7 +538,7 @@ def reveal_open_answer(
         db.add(rec)
     else:
         rec.user_answer = VIEWED_OPEN_ANSWER
-        rec.is_correct = True
+        rec.is_correct = False
         rec.attempts_count = max(rec.attempts_count, 1)
         rec.updated_at = utcnow()
 

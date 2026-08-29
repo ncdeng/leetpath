@@ -1,10 +1,30 @@
 <template>
   <div class="container">
-    <div class="page-head">
+    <div class="page-head review-page-head">
       <div>
         <div class="kicker">Review Deck</div>
         <h1 class="display">背题模式</h1>
       </div>
+
+      <!-- 语言切换器：移至顶栏与标题/统计项水平对齐 -->
+      <div class="review-head-control" v-if="!loading && deck.length > 0">
+        <span class="review-lang-hint">当前背题语言</span>
+        <div class="segmented">
+          <button
+            :class="{ active: langPref === 'python3' }"
+            @click="setLang('python3')"
+          >
+            Python 3
+          </button>
+          <button
+            :class="{ active: langPref === 'cpp' }"
+            @click="setLang('cpp')"
+          >
+            C++ 20
+          </button>
+        </div>
+      </div>
+
       <div class="head-stats">
         <div class="stat">
           <span class="num accent">{{ rememberedCount }}</span>
@@ -24,25 +44,6 @@
     <!-- 顶部进度条 -->
     <div v-if="!loading && deck.length" class="progress-track review-progress">
       <div class="seg" :style="{ width: `${(rememberedCount / deck.length) * 100}%`, background: 'var(--accent)' }"></div>
-    </div>
-
-    <!-- 语言切换工具栏 -->
-    <div class="review-toolbar" v-if="!loading && deck.length > 0">
-      <span class="review-lang-hint">当前背题语言</span>
-      <div class="segmented">
-        <button
-          :class="{ active: langPref === 'python3' }"
-          @click="setLang('python3')"
-        >
-          Python 3
-        </button>
-        <button
-          :class="{ active: langPref === 'cpp' }"
-          @click="setLang('cpp')"
-        >
-          C++ 20
-        </button>
-      </div>
     </div>
 
     <!-- 骨架屏加载 -->

@@ -222,6 +222,42 @@
   margin-top: 0;
 }
 
+/* 问答题专属操作面板 */
+.quiz-open-panel {
+  margin-bottom: 24px;
+}
+.quiz-open-unrevealed {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 36px 24px;
+  gap: 14px;
+  background: var(--surface-2);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  text-align: center;
+}
+.quiz-open-unrevealed .btn-reveal {
+  padding: 10px 24px;
+  font-size: 15px;
+  font-weight: 600;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.quiz-open-unrevealed .open-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-dim);
+  max-width: 560px;
+  line-height: 1.6;
+  margin: 0;
+}
+
 /* 选项列表：iOS 大圆角列表行 */
 .quiz-options-grid {
   display: flex;

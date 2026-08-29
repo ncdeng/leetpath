@@ -10,21 +10,30 @@
    ========================================================================== */
 
 /* ---------- 页面工具区 ---------- */
-.review-progress { margin-bottom: 24px; }
+.review-page-head {
+  align-items: flex-end;
+}
 
-.review-toolbar {
+.review-head-control {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 26px;
+  gap: 10px;
+  background: var(--surface);
+  border: 0.5px solid var(--border-strong);
+  padding: 4px 6px 4px 12px;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 2px;
 }
+
 .review-lang-hint {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text-dim);
   font-weight: 550;
+  white-space: nowrap;
 }
+
+.review-progress { margin-bottom: 32px; }
 
 .review-skeleton {
   padding: 32px;
@@ -270,10 +279,14 @@
 
 /* ---------- 移动端 ≤1023px：单列书页、操作条纵排、触控目标 ≥44px ---------- */
 @media (max-width: 1023px) {
-  .review-toolbar { margin-bottom: 20px; }
-  .review-toolbar .segmented button {
-    min-height: 44px;
-    padding: 8px 20px;
+  .review-head-control {
+    width: 100%;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .review-head-control .segmented button {
+    min-height: 40px;
+    padding: 6px 16px;
   }
 
   .review-card {

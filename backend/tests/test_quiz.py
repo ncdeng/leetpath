@@ -455,6 +455,72 @@ def test_unanswered_favorite_and_slash_do_not_reveal_answers_or_pollute_stats(ad
     assert stats_after["slashed_count"] == 2
 
 
+def test_today_prioritizes_preference_only_objective_questions(admin_client, monkeypatch):
+    from app import db as dbmod
+    from app.models import QuizQuestion
+    from app.routers import quiz as quiz_router
+
+    class NoShuffleRandom:
+        def __init__(self, _seed):
+            pass
+
+        def shuffle(self, _values):
+            pass
+
+    monkeypatch.setattr(quiz_router.random, "Random", NoShuffleRandom)
+
+    with dbmod.SessionLocal() as db:
+        answered = QuizQuestion(
+            bank="today-preference-priority",
+            category="测试",
+            type="single",
+            ordinal=1,
+            stem="真正已答题",
+            options={"A": "对", "B": "错"},
+            answer="A",
+            analysis="已答题应排在未答题之后。",
+            tags=[],
+        )
+        favorite_only = QuizQuestion(
+            bank="today-preference-priority",
+            category="测试",
+            type="single",
+            ordinal=2,
+            stem="仅收藏题",
+            options={"A": "对", "B": "错"},
+            answer="A",
+            analysis="收藏不等于作答。",
+            tags=[],
+        )
+        slashed_only = QuizQuestion(
+            bank="today-preference-priority",
+            category="测试",
+            type="single",
+            ordinal=3,
+            stem="仅斩题",
+            options={"A": "对", "B": "错"},
+            answer="A",
+            analysis="斩题不等于作答。",
+            tags=[],
+        )
+        db.add_all([answered, favorite_only, slashed_only])
+        db.commit()
+        answered_id = answered.id
+        favorite_id = favorite_only.id
+        slashed_id = slashed_only.id
+
+    assert admin_client.post(
+        f"/api/quiz/questions/{answered_id}/answer", json={"user_answer": "A"}
+    ).status_code == 200
+    assert admin_client.post(f"/api/quiz/questions/{favorite_id}/favorite").status_code == 200
+    assert admin_client.post(f"/api/quiz/questions/{slashed_id}/slash").status_code == 200
+
+    today = admin_client.get("/api/quiz/today?limit=3").json()["items"]
+    positions = {item["id"]: index for index, item in enumerate(today)}
+    assert positions[favorite_id] < positions[answered_id]
+    assert positions[slashed_id] < positions[answered_id]
+
+
 def test_judge_grades_by_option_text_after_ab_swap(admin_client):
     from app import db as dbmod
     from app.models import QuizQuestion
@@ -529,6 +595,22 @@ def test_quiz_seed_includes_oncall_open_ended():
         "T4 基环树DP",
     ):
         assert needle not in stems
+
+
+def test_quiz_seed_analysis_has_no_plain_draft_prefix():
+    from pathlib import Path
+    import json
+
+    path = Path(__file__).resolve().parents[1] / "app" / "seed" / "quiz_questions.json"
+    questions = json.loads(path.read_text(encoding="utf-8"))
+    offenders = [
+        (question["bank"], question["ordinal"])
+        for question in questions
+        if isinstance(question.get("analysis"), str)
+        and question["analysis"].startswith("【草稿】")
+    ]
+
+    assert offenders == []
 
 
 def test_quiz_list_omitted_or_zero_limit_returns_all(admin_client):
@@ -619,8 +701,10 @@ def test_quiz_loader_imports_open_ended_empty_options(admin_client, tmp_path):
 
 
 def test_open_ended_reveal_and_empty_options_list(admin_client):
+    from sqlalchemy import select
+
     from app import db as dbmod
-    from app.models import QuizQuestion
+    from app.models import QuizQuestion, QuizRecord, User
 
     with dbmod.SessionLocal() as db:
         q = QuizQuestion(
@@ -667,6 +751,24 @@ def test_open_ended_reveal_and_empty_options_list(admin_client):
     body = revealed.json()
     assert "OnCall" in body["analysis"]
     assert body["answer_status"] == "draft"
+
+    with dbmod.SessionLocal() as db:
+        admin_id = db.scalar(select(User.id).where(User.username == "admin"))
+        assert admin_id is not None
+        record = db.get(QuizRecord, (admin_id, qid))
+        assert record is not None
+        assert record.is_correct is False
+        assert record.attempts_count == 1
+
+    revealed_again = admin_client.post(f"/api/quiz/questions/{qid}/reveal")
+    assert revealed_again.status_code == 200
+    assert revealed_again.json()["attempts_count"] == 1
+
+    with dbmod.SessionLocal() as db:
+        record = db.get(QuizRecord, (admin_id, qid))
+        assert record is not None
+        assert record.is_correct is False
+        assert record.attempts_count == 1
 
     after = admin_client.get(f"/api/quiz/questions/{qid}").json()
     assert after["is_answered"] is True
