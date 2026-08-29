@@ -527,6 +527,9 @@ function clientPoint(e: Event, pointerId?: number): Point | null {
 function beginCapsuleDrag(clientX: number, clientY: number, el: HTMLElement, kind: 'pointer' | 'touch') {
   capsuleDragKind = kind
   hasMovedCapsule = false
+  // suppressCapsuleClick 只在拖拽移动时置 true；若不复位，拖过一次后
+  // onCapsuleClickCapture 会把之后所有点击永久吞掉（AI 助手点不开）
+  suppressCapsuleClick = false
   isDraggingCapsule.value = false
   const rect = el.getBoundingClientRect()
   capsuleDragSize = rectSize(rect, CAPSULE_FALLBACK_SIZE)
