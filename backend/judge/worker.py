@@ -368,7 +368,12 @@ def claim_pending(session: Any, Submission: Any) -> int | None:
 
 
 def recover_orphaned_judging(session: Any, Submission: Any) -> int:
-    """单 worker 启动时回收上一次进程遗留的 judging 提交。"""
+    """单 worker 启动时回收上一次进程遗留的 judging 提交（crash recovery）。
+
+    这是**无条件**全量重置，只在进程启动、尚未领取任何提交时调用才安全：
+    此刻不存在本进程正在评测的提交，仍为 judging 的必然是上次强杀的孤儿。
+    切勿在主循环中调用——那会误杀其它 worker 正在评测的提交。
+    """
     from sqlalchemy import update
 
     result = session.execute(
@@ -378,6 +383,57 @@ def recover_orphaned_judging(session: Any, Submission: Any) -> int:
     )
     session.commit()
     return int(result.rowcount or 0)
+
+
+def cleanup_stale_artifacts() -> tuple[int, int]:
+    """清理上次异常退出遗留的已停评测容器与过期临时目录，避免随时间累积。
+
+    只动「已退出」的 lpj-* 容器和超过 1 小时未变更的 workdir，
+    不会碰仍在运行的其他 worker 的活跃资源。
+    """
+    removed_containers = 0
+    try:
+        r = _run_docker(
+            ["ps", "-aq", "--filter", "name=lpj-", "--filter", "status=exited"],
+            timeout=30,
+        )
+        if r.returncode == 0:
+            for cid in r.stdout.split():
+                _force_rm_container(cid.strip())
+                removed_containers += 1
+    except JudgeInfraError:
+        pass
+    removed_dirs = 0
+    cutoff = time.time() - 3600
+    for entry in Path(tempfile.gettempdir()).glob("lpj-*"):
+        try:
+            if entry.is_dir() and entry.stat().st_mtime < cutoff:
+                shutil.rmtree(entry, ignore_errors=True)
+                removed_dirs += 1
+        except OSError:
+            continue
+    return removed_containers, removed_dirs
+
+
+def _start_heartbeat() -> threading.Thread:
+    """后台线程周期性 touch 心跳文件，供 compose healthcheck 探测 worker 是否存活。
+
+    评测在主线程串行执行，单次评测可能长达数分钟，心跳放在独立线程
+    才不会在长评测期间被误判为卡死。
+    """
+    path = Path(tempfile.gettempdir()) / "lpj-worker-heartbeat"
+
+    def beat() -> None:
+        while True:
+            try:
+                path.touch()
+            except OSError:
+                pass
+            time.sleep(10)
+
+    thread = threading.Thread(target=beat, daemon=True)
+    thread.start()
+    return thread
 
 
 def _prepare_workdir(job: JobData) -> Path:
@@ -400,11 +456,22 @@ def _prepare_workdir(job: JobData) -> Path:
             newline="\n",
         )
     root.chmod(0o777)
+    # 隐藏用例只应经 docker 单文件挂载进容器；宿主侧收紧到属主可读，
+    # 避免同机其他用户直接翻看隐藏用例
+    tests_dir.chmod(0o700)
     return root
 
 
 def _compile_cpp(work_dir: Path) -> str | None:
-    """成功返回 None；失败返回截断后的编译器输出。"""
+    """成功返回 None；失败返回截断后的编译器输出。
+
+    只挂 main.cpp：整目录挂载会让 `#include "tests/003.in"` 把隐藏用例内容
+    当源码解析，并经编译报错原文回显给用户（compile_output 直接展示）。
+    产物写到独立的 build 目录，避免为此把源码挂成可写。
+    """
+    build_dir = work_dir / "build"
+    build_dir.mkdir(exist_ok=True)
+    build_dir.chmod(0o777)
     args = [
         "run",
         "--rm",
@@ -418,10 +485,11 @@ def _compile_cpp(work_dir: Path) -> str | None:
         "--cap-drop", "ALL",
         "--security-opt", "no-new-privileges",
         "--user", "65534:65534",
-        "-v", _docker_volume(work_dir, "/work"),
+        "-v", _docker_volume(work_dir / "main.cpp", "/work/main.cpp", read_only=True),
+        "-v", _docker_volume(build_dir, "/out"),
         "-w", "/work",
         JUDGE_IMAGE_CPP,
-        "g++", "-O2", "-std=c++17", "-o", "main_bin", "main.cpp",
+        "g++", "-O2", "-std=c++17", "-o", "/out/main_bin", "main.cpp",
     ]
     r = _run_docker(
         args,
@@ -442,8 +510,56 @@ def _compile_cpp(work_dir: Path) -> str | None:
     return None
 
 
+def _precheck_python(work_dir: Path) -> str | None:
+    """Python 语法预检查。成功返回 None，失败返回截断后的错误输出（判 CE）。
+
+    Python 没有编译阶段，语法错误会在每个用例上表现成 RE 加一屏 traceback。
+    与 cpp 编译对称地独立起一个容器：退出码自成命名空间，不会和用户程序的
+    退出码混淆（用户 sys.exit(3) 不该被判 CE）；且每次提交只跑一次，
+    而不是每个用例重跑。/work 只读，故 pycache 指向 tmpfs。
+    """
+    args = [
+        "run",
+        "--rm",
+        "--network", "none",
+        "--read-only",
+        "--tmpfs", "/tmp:size=32m",
+        "--memory", "512m",
+        "--memory-swap", "512m",
+        "--cpus", "1",
+        "--pids-limit", "64",
+        "--cap-drop", "ALL",
+        "--security-opt", "no-new-privileges",
+        "--user", "65534:65534",
+        "-e", "PYTHONPYCACHEPREFIX=/tmp/pyc",
+        "-v", _docker_volume(work_dir / "main.py", "/work/main.py", read_only=True),
+        "-w", "/work",
+        JUDGE_IMAGE_PYTHON,
+        "python3", "-m", "py_compile", "main.py",
+    ]
+    r = _run_docker(
+        args,
+        timeout=COMPILE_TIMEOUT_S,
+        container_name=_container_name("pc", work_dir.name),
+    )
+    if r.returncode == -1:
+        return _truncate("语法检查超时", COMPILE_OUTPUT_LIMIT)
+    if r.returncode == OUTPUT_LIMIT_RETURN_CODE:
+        return "语法检查输出超过 1 MiB 限制"
+    if r.returncode != 0 and (r.returncode == 125 or _looks_like_docker_failure(r)):
+        raise JudgeInfraError(
+            _truncate((r.stderr or r.stdout or "docker run 失败").strip(), COMPILE_OUTPUT_LIMIT)
+        )
+    if r.returncode != 0:
+        msg = r.stderr if r.stderr.strip() else r.stdout
+        return _truncate(msg, COMPILE_OUTPUT_LIMIT)
+    return None
+
+
 def _looks_like_docker_failure(r: subprocess.CompletedProcess[str]) -> bool:
-    text = f"{r.stderr}\n{r.stdout}".lower()
+    """只匹配 stderr 首行，避免用户程序自己打印含 docker 字样的输出被误判为基础设施故障。"""
+    lines = (r.stderr or "").strip().splitlines()
+    first = lines[0].lower() if lines else ""
     needles = (
         "unable to find image",
         "cannot connect",
@@ -453,7 +569,7 @@ def _looks_like_docker_failure(r: subprocess.CompletedProcess[str]) -> bool:
         "is not running",
         "no such image",
     )
-    return any(n in text for n in needles)
+    return any(n in first for n in needles)
 
 
 def _run_case(
@@ -463,10 +579,19 @@ def _run_case(
     image: str,
     inner_cmd: str,
 ) -> tuple[str, int, str, str]:
-    """返回 (status, runtime_ms, stdout, stderr)。runtime_ms 为外层 wall time（含容器启动开销）。"""
+    """返回 (status, runtime_ms, stdout, stderr)。runtime_ms 为外层 wall time（含容器启动开销）。
+
+    只把当前用例的 .in 与源码文件单独挂进容器：整目录挂载会让用户代码
+    直接读到全部隐藏用例输入。
+    """
     limit_s = max(1, math.ceil(job.time_limit_ms / 1000))
-    infile = f"tests/{case.ordinal:03d}.in"
-    inner = f"timeout -s KILL {limit_s} {inner_cmd} < {infile}"
+    if job.language == "python3":
+        code_host, code_dest = work_dir / "main.py", "/work/main.py"
+    else:
+        code_host, code_dest = work_dir / "build" / "main_bin", "/work/main_bin"
+    infile_host = work_dir / "tests" / f"{case.ordinal:03d}.in"
+    # 容器内只跑用户程序：不与预检查共用退出码，用户 sys.exit(3) 不会被误判 CE
+    inner = f"timeout -s KILL {limit_s} {inner_cmd} < /tests/current.in"
     mem = f"{job.memory_limit_mb}m"
     # 不用 --rm：timeout -s KILL 在容器内也返回 137，必须 inspect OOMKilled 才能和 MLE 区分；结束后显式 rm。
     args = [
@@ -481,7 +606,8 @@ def _run_case(
         "--cap-drop", "ALL",
         "--security-opt", "no-new-privileges",
         "--user", "65534:65534",
-        "-v", _docker_volume(work_dir, "/work", read_only=True),
+        "-v", _docker_volume(code_host, code_dest, read_only=True),
+        "-v", _docker_volume(infile_host, "/tests/current.in", read_only=True),
         "-w", "/work",
         image,
         "sh", "-c", inner,
@@ -497,7 +623,9 @@ def _run_case(
         oom = _container_oom_killed(name) if r.returncode != -1 else False
 
         if r.returncode == -1:
-            return STATUS_TLE, runtime_ms, stdout, stderr
+            # docker CLI 被外层超时强杀：几乎必然是容器启动慢/宿主拥塞，
+            # 内层 timeout 才是真正的程序超时，这里判 IE 而不是冤枉用户 TLE
+            return STATUS_IE, runtime_ms, stdout, USER_IE_MESSAGE
         if r.returncode == OUTPUT_LIMIT_RETURN_CODE:
             return STATUS_RE, runtime_ms, stdout, "程序输出超过 1 MiB 限制"
         if r.returncode == 124:
@@ -555,17 +683,17 @@ def evaluate(job: JobData) -> tuple[str, int | None, list[dict[str, Any]], str |
     except ValueError as exc:
         return STATUS_CE, None, [], str(exc)
     try:
-        if job.language == "cpp":
-            compile_output = _compile_cpp(work_dir)
-            if compile_output is not None:
-                return STATUS_CE, None, [], compile_output
-
         if job.language == "python3":
             image = JUDGE_IMAGE_PYTHON
             inner_cmd = "python3 main.py"
+            prepare_output = _precheck_python(work_dir)
         else:
             image = JUDGE_IMAGE_CPP
             inner_cmd = "./main_bin"
+            prepare_output = _compile_cpp(work_dir)
+        # 两种语言的准备阶段都在独立容器完成，失败即整题 CE（judge.md 第 2 步）
+        if prepare_output is not None:
+            return STATUS_CE, None, [], prepare_output
 
         details: list[dict[str, Any]] = []
         overall = STATUS_AC
@@ -689,6 +817,10 @@ def main() -> None:
     if recovered:
         log.warning("已回收 %s 个遗留 judging 提交", recovered)
     require_images()
+    cleaned_containers, cleaned_dirs = cleanup_stale_artifacts()
+    if cleaned_containers or cleaned_dirs:
+        log.info("清理遗留评测容器 %s 个、临时目录 %s 个", cleaned_containers, cleaned_dirs)
+    _start_heartbeat()
     log.info(
         "worker 启动 poll=%.1fs python=%s cpp=%s",
         POLL_INTERVAL,

@@ -1,5 +1,7 @@
 // API 层：与 docs/spec/backend-api.md 契约对齐
 
+import { loginRedirectUrl } from './loginRedirect'
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -30,7 +32,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
       /* ignore */
     }
     if (res.status === 401 && !['/login', '/register'].includes(location.pathname)) {
-      location.assign('/login')
+      location.assign(loginRedirectUrl(location))
     }
     throw new ApiError(res.status, message)
   }

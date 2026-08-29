@@ -166,6 +166,7 @@ import { renderMarkdown } from '../markdown'
 import { useAiStore, type AiMessage } from '../stores/ai'
 import { useToast } from '../stores/toast'
 import { compressPickedFiles, insertAtCursor, readClipboard, toApiContent } from '../aiPaste'
+import { copyToClipboard } from '../clipboard'
 
 export interface PromptPreset {
   label: string
@@ -209,9 +210,9 @@ function renderMd(text: string) {
   return renderMarkdown(text)
 }
 
-function copyText(text: string) {
-  navigator.clipboard.writeText(text)
-  toast.success('已复制到剪贴板')
+async function copyText(text: string) {
+  if (await copyToClipboard(text)) toast.success('已复制到剪贴板')
+  else toast.error('复制失败，请手动复制')
 }
 
 function scrollToBottom() {

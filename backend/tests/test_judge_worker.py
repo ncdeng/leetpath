@@ -1,5 +1,9 @@
+import os
 import subprocess
 import sys
+import time
+
+import pytest
 
 from judge import worker
 
@@ -67,6 +71,27 @@ def test_compile_container_has_matching_security_limits(tmp_path, monkeypatch):
         "--tmpfs",
     ):
         assert expected in captured
+
+
+def test_compile_mounts_only_source_not_tests_dir(tmp_path, monkeypatch):
+    """编译阶段整目录挂载会让 #include "tests/003.in" 把隐藏用例回显进编译报错"""
+    captured: list[str] = []
+
+    def fake_run(args, timeout, *, container_name=None):
+        captured.extend(args)
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(worker, "_run_docker", fake_run)
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "003.in").write_text("secret-case", encoding="utf-8")
+
+    assert worker._compile_cpp(tmp_path) is None
+
+    volumes = [captured[i + 1] for i, arg in enumerate(captured) if arg == "-v"]
+    assert any(v.endswith(":/work/main.cpp:ro") for v in volumes)
+    # work_dir 整体（含 tests/）不得进入编译容器
+    assert not any(v.endswith(":/work") or v.endswith(":/work:ro") for v in volumes)
+    assert not any("tests" in v for v in volumes)
 
 
 def test_prepare_workdir_wraps_leetcode_solution(tmp_path, monkeypatch):
@@ -205,3 +230,198 @@ def test_worker_recovers_orphaned_judging_submissions(admin_client):
 
     with dbmod.SessionLocal() as db:
         assert db.get(Submission, created["id"]).status == "pending"
+
+
+def _make_job(**overrides) -> worker.JobData:
+    fields = {
+        "submission_id": 1,
+        "language": "python3",
+        "code": "print('ok')",
+        "time_limit_ms": 1000,
+        "memory_limit_mb": 128,
+        "cases": (),
+        "io_mode": "acm",
+        "problem_slug": "two-sum",
+        "leetcode_spec": None,
+    }
+    fields.update(overrides)
+    return worker.JobData(**fields)
+
+
+def _make_case(ordinal: int = 1) -> worker.CaseData:
+    return worker.CaseData(ordinal=ordinal, input_text="", expected_output="ok", is_sample=True)
+
+
+def _make_tests_dir(tmp_path, ordinal: int = 1):
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+    (tests_dir / f"{ordinal:03d}.in").write_text("", encoding="utf-8")
+    return tests_dir
+
+
+def test_run_case_mounts_only_current_case_not_whole_dir(tmp_path, monkeypatch):
+    captured: list[str] = []
+
+    def fake_run(args, timeout, *, container_name=None):
+        captured.extend(args)
+        return subprocess.CompletedProcess(args, 0, "ok\n", "")
+
+    monkeypatch.setattr(worker, "_run_docker", fake_run)
+    monkeypatch.setattr(worker, "_force_rm_container", lambda _name: None)
+    _make_tests_dir(tmp_path, ordinal=2)
+
+    status, _, _, _ = worker._run_case(
+        _make_job(), tmp_path, _make_case(ordinal=2), "python-image", "python3 main.py"
+    )
+
+    assert status == worker.STATUS_AC
+    volumes = [captured[i + 1] for i, arg in enumerate(captured) if arg == "-v"]
+    # 只挂当前用例与源码文件；整目录挂载会让用户代码读到全部隐藏用例
+    assert any(v.endswith(":/tests/current.in:ro") and "002.in" in v for v in volumes)
+    assert any(v.endswith(":/work/main.py:ro") for v in volumes)
+    assert not any(v.endswith(":/work:ro") for v in volumes)
+
+
+def test_run_case_maps_outer_timeout_to_ie(tmp_path, monkeypatch):
+    def fake_run(args, timeout, *, container_name=None):
+        return subprocess.CompletedProcess(args, -1, "", "")
+
+    monkeypatch.setattr(worker, "_run_docker", fake_run)
+    monkeypatch.setattr(worker, "_force_rm_container", lambda _name: None)
+    _make_tests_dir(tmp_path)
+
+    status, _, _, stderr = worker._run_case(
+        _make_job(), tmp_path, _make_case(), "python-image", "python3 main.py"
+    )
+
+    # docker CLI 被外层超时强杀是基础设施问题，不该冤枉用户 TLE
+    assert status == worker.STATUS_IE
+    assert stderr == worker.USER_IE_MESSAGE
+
+
+def test_user_exit_code_3_is_re_not_ce(tmp_path, monkeypatch):
+    """用户程序 sys.exit(3) 必须判 RE：预检查已移出运行容器，退出码不再共用命名空间"""
+    def fake_run(args, timeout, *, container_name=None):
+        return subprocess.CompletedProcess(args, 3, "", "")
+
+    monkeypatch.setattr(worker, "_run_docker", fake_run)
+    monkeypatch.setattr(worker, "_force_rm_container", lambda _name: None)
+    _make_tests_dir(tmp_path)
+
+    status, _, _, _ = worker._run_case(
+        _make_job(), tmp_path, _make_case(), "python-image", "python3 main.py"
+    )
+
+    assert status == worker.STATUS_RE
+
+
+def test_run_case_container_command_has_no_precheck(tmp_path, monkeypatch):
+    """运行容器内只有一条 timeout 命令，不含 || / ; 复合结构"""
+    captured: list[str] = []
+
+    def fake_run(args, timeout, *, container_name=None):
+        captured.extend(args)
+        return subprocess.CompletedProcess(args, 0, "ok\n", "")
+
+    monkeypatch.setattr(worker, "_run_docker", fake_run)
+    monkeypatch.setattr(worker, "_force_rm_container", lambda _name: None)
+    _make_tests_dir(tmp_path)
+
+    worker._run_case(_make_job(), tmp_path, _make_case(), "python-image", "python3 main.py")
+
+    inner = captured[-1]
+    assert inner.startswith("timeout -s KILL")
+    assert "py_compile" not in inner
+    assert "||" not in inner
+    assert ";" not in inner
+
+
+def test_python_syntax_error_maps_to_ce_via_precheck(tmp_path, monkeypatch):
+    """语法错误在独立预检查阶段判 CE，且不进入任何用例容器"""
+    monkeypatch.setattr(worker.tempfile, "gettempdir", lambda: str(tmp_path))
+    monkeypatch.setattr(worker, "_precheck_python", lambda _wd: "SyntaxError: invalid syntax")
+    monkeypatch.setattr(
+        worker, "_run_case", lambda *a, **k: pytest.fail("CE 后不应再跑任何用例")
+    )
+    job = _make_job(
+        cases=(worker.CaseData(ordinal=1, input_text="", expected_output="", is_sample=True),)
+    )
+
+    status, runtime_ms, detail, compile_output = worker.evaluate(job)
+
+    assert status == worker.STATUS_CE
+    assert runtime_ms is None
+    assert detail == []
+    assert "SyntaxError" in (compile_output or "")
+
+
+def test_precheck_python_runs_once_per_submission(tmp_path, monkeypatch):
+    """预检查是独立阶段：多用例提交也只跑一次，不随用例数重复"""
+    monkeypatch.setattr(worker.tempfile, "gettempdir", lambda: str(tmp_path))
+    calls: list[str] = []
+
+    def fake_precheck(work_dir):
+        calls.append(str(work_dir))
+        return None
+
+    monkeypatch.setattr(worker, "_precheck_python", fake_precheck)
+    monkeypatch.setattr(
+        worker, "_run_case", lambda *a, **k: (worker.STATUS_AC, 5, "", "")
+    )
+    job = _make_job(
+        cases=tuple(
+            worker.CaseData(ordinal=i, input_text="", expected_output="", is_sample=False)
+            for i in range(1, 4)
+        )
+    )
+
+    status, _, detail, _ = worker.evaluate(job)
+
+    assert status == worker.STATUS_AC
+    assert len(detail) == 3
+    assert len(calls) == 1
+
+
+def test_precheck_python_mounts_only_source_file(tmp_path, monkeypatch):
+    """预检查容器同样只挂 main.py，不得暴露 tests/"""
+    captured: list[str] = []
+
+    def fake_run(args, timeout, *, container_name=None):
+        captured.extend(args)
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(worker, "_run_docker", fake_run)
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "001.in").write_text("secret", encoding="utf-8")
+
+    assert worker._precheck_python(tmp_path) is None
+
+    volumes = [captured[i + 1] for i, arg in enumerate(captured) if arg == "-v"]
+    assert any(v.endswith(":/work/main.py:ro") for v in volumes)
+    assert not any("tests" in v for v in volumes)
+    assert "py_compile" in captured
+
+
+def test_cleanup_stale_artifacts_removes_exited_containers_and_old_dirs(tmp_path, monkeypatch):
+    removed: list[str] = []
+    monkeypatch.setattr(
+        worker,
+        "_run_docker",
+        lambda args, timeout: subprocess.CompletedProcess(args, 0, "cid1\ncid2\n", ""),
+    )
+    monkeypatch.setattr(worker, "_force_rm_container", lambda name: removed.append(name))
+    monkeypatch.setattr(worker.tempfile, "gettempdir", lambda: str(tmp_path))
+    old_dir = tmp_path / "lpj-11"
+    old_dir.mkdir()
+    stale = time.time() - 7200
+    os.utime(old_dir, (stale, stale))
+    fresh_dir = tmp_path / "lpj-12"
+    fresh_dir.mkdir()
+
+    containers, dirs = worker.cleanup_stale_artifacts()
+
+    assert containers == 2
+    assert removed == ["cid1", "cid2"]
+    assert dirs == 1
+    assert not old_dir.exists()
+    assert fresh_dir.exists()

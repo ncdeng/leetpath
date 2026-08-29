@@ -1,6 +1,9 @@
 import contextlib
 import io
+import os
+import runpy
 import sys
+import tempfile
 from pathlib import Path
 
 from judge.leetcode_catalog import SPECS, spec_for
@@ -11,16 +14,28 @@ SEED = Path(__file__).resolve().parents[1] / "app" / "seed" / "problems"
 
 
 def _exec_wrap(wrapped: str, stdin_text: str) -> str:
-    g = {"__name__": "__main__"}
     buf_out = io.StringIO()
+    fd, path = tempfile.mkstemp(suffix=".py")
     old_in = sys.stdin
-    sys.stdin = io.StringIO(stdin_text)
     try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
+            fd = -1
+            f.write(wrapped)
+        sys.stdin = io.StringIO(stdin_text)
         with contextlib.redirect_stdout(buf_out):
-            exec(compile(wrapped, "<wrap>", "exec"), g)
+            runpy.run_path(path, run_name="__main__")
+        return buf_out.getvalue()
     finally:
         sys.stdin = old_in
-    return buf_out.getvalue()
+        if fd >= 0:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
 
 
 def _assert_seed(slug: str, user_code: str) -> None:

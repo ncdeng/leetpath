@@ -1,4 +1,5 @@
 import { computed, ref } from 'vue'
+import { hasAvailableAiKey, resolveAiPayloadBaseUrl } from '../aiRequest'
 
 export type AiContentPart =
   | { type: 'text'; text: string }
@@ -224,10 +225,10 @@ export function useAiStore() {
    * 一键拉取中转站 / 官方 API 提供的全部可用模型列表 (通过后端安全代理，完美解决浏览器跨域与预检拦截)
    */
   async function fetchModels(): Promise<string[]> {
-    if (!baseUrl.value.trim()) {
+    if (apiKey.value.trim() && !baseUrl.value.trim()) {
       throw new Error('请先填写 Base URL')
     }
-    if (!apiKey.value.trim()) {
+    if (!hasAvailableAiKey(apiKey.value, hasSystemKey.value)) {
       throw new Error('请先填写 API Key')
     }
 
@@ -237,7 +238,7 @@ export function useAiStore() {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        base_url: baseUrl.value.trim(),
+        base_url: resolveAiPayloadBaseUrl(baseUrl.value, apiKey.value),
         api_key: apiKey.value.trim(),
       }),
     })
@@ -356,7 +357,7 @@ export function useAiStore() {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        base_url: baseUrl.value.trim(),
+        base_url: resolveAiPayloadBaseUrl(baseUrl.value, apiKey.value),
         api_key: apiKey.value.trim(),
         model: selectedModel.value.trim(),
         messages: finalMessages,

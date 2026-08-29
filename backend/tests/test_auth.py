@@ -1,10 +1,20 @@
 from datetime import datetime, timezone
+import uuid
 
 import pytest
 from pydantic import ValidationError
 
 from app.config import Settings, get_settings
 from app.routers.auth import UserOut
+
+
+def _test_password(tag: str) -> str:
+    return "-".join(["leetpath", tag, uuid.uuid4().hex])
+
+
+PASSWORD = _test_password("main")
+NEW_PASSWORD = _test_password("rotated")
+WRONG_PASSWORD = _test_password("wrong")
 
 
 def _new_invite(admin_client) -> str:
@@ -21,7 +31,7 @@ def test_register_login_me_logout(admin_client):
         "/api/auth/register",
         json={
             "username": "alice",
-            "password": "password123",
+            "password": PASSWORD,
             "email": "a@example.com",
             "invite_code": code,
         },
@@ -49,11 +59,11 @@ def test_register_login_me_logout(admin_client):
     me2 = admin_client.get("/api/auth/me")
     assert me2.status_code == 401
 
-    bad = admin_client.post("/api/auth/login", json={"username": "alice", "password": "wrongpass"})
+    bad = admin_client.post("/api/auth/login", json={"username": "alice", "password": WRONG_PASSWORD})
     assert bad.status_code == 401
     assert bad.json()["detail"] == "用户名或密码错误"
 
-    ok = admin_client.post("/api/auth/login", json={"username": "alice", "password": "password123"})
+    ok = admin_client.post("/api/auth/login", json={"username": "alice", "password": PASSWORD})
     assert ok.status_code == 200
     assert ok.json()["username"] == "alice"
     assert admin_client.get("/api/auth/me").status_code == 200
@@ -62,7 +72,7 @@ def test_register_login_me_logout(admin_client):
 def test_registration_requires_invite(client):
     response = client.post(
         "/api/auth/register",
-        json={"username": "alice", "password": "password123", "invite_code": "invalid"},
+        json={"username": "alice", "password": PASSWORD, "invite_code": "invalid"},
     )
     assert response.status_code == 400
     assert response.json()["detail"] == "注册邀请码无效或已失效"
@@ -73,14 +83,14 @@ def test_invite_is_single_use_and_registration_never_grants_admin(admin_client):
     admin_client.post("/api/auth/logout")
     first = admin_client.post(
         "/api/auth/register",
-        json={"username": "alice", "password": "password123", "invite_code": code},
+        json={"username": "alice", "password": PASSWORD, "invite_code": code},
     )
     assert first.status_code == 201
     assert first.json()["is_admin"] is False
     admin_client.post("/api/auth/logout")
     second = admin_client.post(
         "/api/auth/register",
-        json={"username": "bob", "password": "password123", "invite_code": code},
+        json={"username": "bob", "password": PASSWORD, "invite_code": code},
     )
     assert second.status_code == 400
 
@@ -91,11 +101,11 @@ def test_duplicate_username_409(admin_client):
     admin_client.post("/api/auth/logout")
     admin_client.post(
         "/api/auth/register",
-        json={"username": "alice", "password": "password123", "invite_code": first_code},
+        json={"username": "alice", "password": PASSWORD, "invite_code": first_code},
     )
     r = admin_client.post(
         "/api/auth/register",
-        json={"username": "alice", "password": "password123", "invite_code": second_code},
+        json={"username": "alice", "password": PASSWORD, "invite_code": second_code},
     )
     assert r.status_code == 409
 
@@ -103,12 +113,12 @@ def test_duplicate_username_409(admin_client):
 def test_register_validation(client):
     short_name = client.post(
         "/api/auth/register",
-        json={"username": "ab", "password": "password123", "invite_code": "x"},
+        json={"username": "ab", "password": PASSWORD, "invite_code": "x"},
     )
     assert short_name.status_code in (400, 422)
     bad_name = client.post(
         "/api/auth/register",
-        json={"username": "alice!", "password": "password123", "invite_code": "x"},
+        json={"username": "alice!", "password": PASSWORD, "invite_code": "x"},
     )
     assert bad_name.status_code in (400, 422)
     short_pw = client.post(
@@ -147,7 +157,7 @@ def test_change_password_and_invalidate_old_session(admin_client):
     admin_client.post("/api/auth/logout")
     registered = admin_client.post(
         "/api/auth/register",
-        json={"username": "alice", "password": "password123", "invite_code": code},
+        json={"username": "alice", "password": PASSWORD, "invite_code": code},
     )
     assert registered.status_code == 201
 
@@ -156,14 +166,14 @@ def test_change_password_and_invalidate_old_session(admin_client):
 
     bad_old = other.post(
         "/api/auth/password",
-        json={"old_password": "wrongpass1", "new_password": "newpass123"},
+        json={"old_password": WRONG_PASSWORD, "new_password": NEW_PASSWORD},
     )
     assert bad_old.status_code == 400
     assert bad_old.json()["detail"] == "当前密码不正确"
 
     same = other.post(
         "/api/auth/password",
-        json={"old_password": "password123", "new_password": "password123"},
+        json={"old_password": PASSWORD, "new_password": PASSWORD},
     )
     assert same.status_code == 400
 
@@ -171,7 +181,7 @@ def test_change_password_and_invalidate_old_session(admin_client):
     old_token = other.cookies.get(cookie_name)
     ok = other.post(
         "/api/auth/password",
-        json={"old_password": "password123", "new_password": "newpass123"},
+        json={"old_password": PASSWORD, "new_password": NEW_PASSWORD},
     )
     assert ok.status_code == 200
     assert other.get("/api/auth/me").status_code == 200
@@ -180,11 +190,11 @@ def test_change_password_and_invalidate_old_session(admin_client):
 
     other.post("/api/auth/logout")
     assert (
-        other.post("/api/auth/login", json={"username": "alice", "password": "password123"}).status_code
+        other.post("/api/auth/login", json={"username": "alice", "password": PASSWORD}).status_code
         == 401
     )
     assert (
-        other.post("/api/auth/login", json={"username": "alice", "password": "newpass123"}).status_code
+        other.post("/api/auth/login", json={"username": "alice", "password": NEW_PASSWORD}).status_code
         == 200
     )
 
@@ -192,7 +202,7 @@ def test_change_password_and_invalidate_old_session(admin_client):
 def test_change_password_requires_login(client):
     r = client.post(
         "/api/auth/password",
-        json={"old_password": "password123", "new_password": "newpass123"},
+        json={"old_password": PASSWORD, "new_password": NEW_PASSWORD},
     )
     assert r.status_code == 401
 

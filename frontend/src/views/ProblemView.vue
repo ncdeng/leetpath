@@ -251,6 +251,7 @@ import { useToast } from '../stores/toast'
 import { useIoModePref, useLangPref } from '../stores/pref'
 import { useStudyPlan } from '../stores/plan'
 import { renderMarkdown, filterSolutionMarkdown } from '../markdown'
+import { copyToClipboard } from '../clipboard'
 import {
   isFinal,
   problemHeading,
@@ -547,10 +548,10 @@ async function loadCodeIntoEditor(historySnippet: string, lang: Language, mode: 
   }
 }
 
-function copyCode(content: string) {
+async function copyCode(content: string) {
   if (!content) return
-  navigator.clipboard.writeText(content)
-  toast.success('代码已复制到剪贴板')
+  if (await copyToClipboard(content)) toast.success('代码已复制到剪贴板')
+  else toast.error('复制失败，请手动复制')
 }
 
 function defaultCodeFor(lang: Language, mode: IoMode): string {

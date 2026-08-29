@@ -202,6 +202,7 @@ import Skeleton from './Skeleton.vue'
 import AppIcon from './AppIcon.vue'
 import { useToast } from '../stores/toast'
 import type { Job } from '../types'
+import { compareFeaturedCompanies } from '../jobBoardSort'
 
 const props = defineProps<{ limit?: number }>()
 const toast = useToast()
@@ -326,22 +327,16 @@ const companyList = computed<CompanyGroup[]>(() => {
     })
   }
 
-  // 排序规则：大厂在前，有紧急截止的在前
-  const tierWeight = { big: 3, mid: 2, small: 1 }
-  return result.sort((a, b) => {
-    const tw = tierWeight[b.tier] - tierWeight[a.tier]
-    if (tw !== 0) return tw
-    if (a.earliestDDay.days !== null && b.earliestDDay.days !== null) {
-      return a.earliestDDay.days - b.earliestDDay.days
-    }
-    return b.jobs.length - a.jobs.length
-  })
+  return result.sort((a, b) => compareFeaturedCompanies(
+    { tier: a.tier, deadlineDays: a.earliestDDay.days, jobCount: a.jobs.length },
+    { tier: b.tier, deadlineDays: b.earliestDDay.days, jobCount: b.jobs.length },
+  ))
 })
 
 const filteredCompanies = computed(() => {
   const kw = q.value.trim().toLowerCase()
 
-  return companyList.value
+  const list = companyList.value
     .map((c) => {
       // 过滤公司下的岗位
       const matchedJobs = c.jobs.filter((j) => {
@@ -376,6 +371,8 @@ const filteredCompanies = computed(() => {
       }
     })
     .filter((c): c is CompanyGroup => c !== null)
+
+  return props.limit ? list.slice(0, props.limit) : list
 })
 
 const filteredJobsCount = computed(() =>

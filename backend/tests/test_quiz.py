@@ -555,10 +555,10 @@ def test_quiz_seed_includes_oncall_open_ended():
 
     path = Path(__file__).resolve().parents[1] / "app" / "seed" / "quiz_questions.json"
     questions = json.loads(path.read_text(encoding="utf-8"))
-    oncall = [q for q in questions if q["bank"] == "oncall-course"]
+    oncall = [q for q in questions if q["bank"] == "OnCall 智能值班项目"]
     proj = [q for q in questions if q["bank"] == "面经项目知识点"]
     bagu = [q for q in questions if q["bank"] == "秋招-八股"]
-    legacy = [q for q in questions if q["bank"] not in {"oncall-course", "面经项目知识点", "秋招-八股"}]
+    legacy = [q for q in questions if q["bank"] not in {"OnCall 智能值班项目", "面经项目知识点", "秋招-八股"}]
     assert len(questions) == 670 + 63 + 369 + 232
     assert len(legacy) == 670
     assert len(oncall) == 63
@@ -658,7 +658,7 @@ def test_quiz_loader_imports_open_ended_empty_options(admin_client, tmp_path):
 
     payload = [
         {
-            "bank": "oncall-course",
+            "bank": "OnCall 智能值班项目",
             "category": "OnCall项目",
             "ordinal": 1,
             "type": "open",
@@ -669,7 +669,7 @@ def test_quiz_loader_imports_open_ended_empty_options(admin_client, tmp_path):
             "tags": ["python"],
         },
         {
-            "bank": "oncall-course",
+            "bank": "OnCall 智能值班项目",
             "category": "OnCall项目",
             "n": 2,
             "type": "open",
@@ -687,7 +687,7 @@ def test_quiz_loader_imports_open_ended_empty_options(admin_client, tmp_path):
         rows = list(
             db.scalars(
                 select(QuizQuestion)
-                .where(QuizQuestion.bank == "oncall-course")
+                .where(QuizQuestion.bank == "OnCall 智能值班项目")
                 .order_by(QuizQuestion.ordinal)
             ).all()
         )
@@ -708,7 +708,7 @@ def test_open_ended_reveal_and_empty_options_list(admin_client):
 
     with dbmod.SessionLocal() as db:
         q = QuizQuestion(
-            bank="oncall-course",
+            bank="OnCall 智能值班项目",
             category="OnCall项目",
             type="open",
             ordinal=1,
@@ -719,7 +719,7 @@ def test_open_ended_reveal_and_empty_options_list(admin_client):
             tags=["python"],
         )
         skip_q = QuizQuestion(
-            bank="oncall-course",
+            bank="OnCall 智能值班项目",
             category="OnCall项目",
             type="open",
             ordinal=2,
@@ -733,7 +733,7 @@ def test_open_ended_reveal_and_empty_options_list(admin_client):
         db.commit()
         qid, skip_id = q.id, skip_q.id
 
-    listed = admin_client.get("/api/quiz/questions?bank=oncall-course").json()
+    listed = admin_client.get("/api/quiz/questions?bank=OnCall 智能值班项目").json()
     assert listed["total"] == 2
     item = next(x for x in listed["items"] if x["id"] == qid)
     assert item["type"] == "open"
@@ -777,7 +777,7 @@ def test_open_ended_reveal_and_empty_options_list(admin_client):
 
     oncall_bank = next(
         item for item in admin_client.get("/api/quiz/banks").json()
-        if item["bank"] == "oncall-course"
+        if item["bank"] == "OnCall 智能值班项目"
     )
     assert oncall_bank["answered"] == 1
     assert oncall_bank["correct"] == 0
@@ -816,7 +816,7 @@ def test_exam_excludes_open_and_skipped(admin_client):
                     tags=["python"],
                 ),
                 QuizQuestion(
-                    bank="oncall-course",
+                    bank="OnCall 智能值班项目",
                     category="OnCall项目",
                     type="open",
                     ordinal=9,
@@ -827,7 +827,7 @@ def test_exam_excludes_open_and_skipped(admin_client):
                     tags=["python"],
                 ),
                 QuizQuestion(
-                    bank="oncall-course",
+                    bank="OnCall 智能值班项目",
                     category="OnCall项目",
                     type="open",
                     ordinal=2,

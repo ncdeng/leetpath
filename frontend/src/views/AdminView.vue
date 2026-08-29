@@ -205,6 +205,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { api } from '../api'
 import AppIcon from '../components/AppIcon.vue'
 import { problemHeading, type InviteCreated, type InviteSummary, type Job, type ProblemListItem } from '../types'
+import { copyToClipboard } from '../clipboard'
 
 interface AdminProblem extends ProblemListItem {
   is_published: boolean
@@ -355,8 +356,9 @@ async function createInvite() {
 
 async function copyInvite() {
   if (!newInviteCode.value) return
-  await navigator.clipboard.writeText(newInviteCode.value)
-  inviteMessage.value = '邀请码已复制'
+  inviteMessage.value = await copyToClipboard(newInviteCode.value)
+    ? '邀请码已复制'
+    : '复制失败，请手动复制'
 }
 
 async function revokeInvite(id: number) {
