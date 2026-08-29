@@ -777,7 +777,9 @@ code, pre, .mono { font-family: var(--mono); }
   font-family: var(--display-font);
   line-height: 1.16;
   margin: 0;
+  text-wrap: balance;
 }
+.kw { white-space: nowrap; }
 .page-head {
   display: flex;
   justify-content: space-between;

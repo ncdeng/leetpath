@@ -8,10 +8,10 @@
       <div class="kicker">Daily Practice & Career Board</div>
       <h1 class="display">
         专为校招求职打造的<br />
-        <span class="grad">极客刷题与算法手撕平台</span>
+        <span class="grad">极客刷题与算法<span class="kw">手撕</span>平台</span>
       </h1>
       <p class="lede">
-        力扣热题 100 + 面经高频手撕题库 · Python3 / C++ 在线沙箱评测 · 52周打卡热力图 · 秋招公司级聚合看板
+        力扣热题 100 + 面经高频<span class="kw">手撕</span>题库 · Python3 / C++ 在线沙箱评测 · 52周打卡热力图 · 秋招公司级聚合看板
       </p>
 
       <div class="hero-stats">
