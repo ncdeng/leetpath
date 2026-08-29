@@ -77,6 +77,9 @@
             <RouterLink to="/problems" :class="{ active: route.path.startsWith('/problems') }">
               <span class="tab-icon"><AppIcon name="list" :size="15" /></span>题库
             </RouterLink>
+            <RouterLink to="/oncall" :class="{ active: route.path === '/oncall' }">
+              <span class="tab-icon"><AppIcon name="shield" :size="15" /></span>OnCall专栏
+            </RouterLink>
             <RouterLink to="/quiz" :class="{ active: route.path.startsWith('/quiz') }">
               <span class="tab-icon"><AppIcon name="pencil" :size="15" /></span>八股刷题
             </RouterLink>

@@ -11,6 +11,7 @@ const JobsView = () => import('./views/JobsView.vue')
 const LinksView = () => import('./views/LinksView.vue')
 const HandbookView = () => import('./views/HandbookView.vue')
 const QuizView = () => import('./views/QuizView.vue')
+const OnCallView = () => import('./views/OnCallView.vue')
 const AdminView = () => import('./views/AdminView.vue')
 const LeaderboardView = () => import('./views/LeaderboardView.vue')
 const SettingsView = () => import('./views/SettingsView.vue')
@@ -24,6 +25,7 @@ export const router = createRouter({
     { path: '/problems', component: ProblemListView },
     { path: '/problems/:slug', component: ProblemView },
     { path: '/quiz', component: QuizView },
+    { path: '/oncall', component: OnCallView },
     { path: '/review', component: ReviewView },
     { path: '/handbook', component: HandbookView },
     { path: '/jobs', component: JobsView },
