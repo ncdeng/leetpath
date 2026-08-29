@@ -115,7 +115,13 @@
     <AiSettingsModal v-if="showAiSettings" @close="showAiSettings = false" />
     <LeaderboardPopup v-if="showLeaderboardPopup" @close="showLeaderboardPopup = false" />
 
-    <nav class="bottom-tabs" v-if="auth.me">
+    <nav
+      v-if="auth.me"
+      ref="bottomTabs"
+      class="bottom-tabs"
+      :class="{ 'fade-left': bottomTabsFade.left, 'fade-right': bottomTabsFade.right }"
+      @scroll.passive="updateTabsFade"
+    >
       <RouterLink to="/" exact-active-class="active">
         <span class="tab-icon"><AppIcon name="home" :size="21" /></span>首页
       </RouterLink>
@@ -148,14 +154,16 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { shouldAutoShowPopupOnce, tabsFadeState } from './appChrome'
 import AiSettingsModal from './components/AiSettingsModal.vue'
 import AppIcon from './components/AppIcon.vue'
 import FloatingAiAssistant from './components/FloatingAiAssistant.vue'
 import LeaderboardPopup from './components/LeaderboardPopup.vue'
 import Toast from './components/Toast.vue'
 import UserAvatar from './components/UserAvatar.vue'
+import { todayLocalDate } from './dates'
 import { useAiStore } from './stores/ai'
 import { useAuthStore } from './stores/auth'
 import { useFontSize, useLangPref } from './stores/pref'
@@ -170,6 +178,8 @@ const aiStore = useAiStore()
 const showAiSettings = ref(false)
 const showLeaderboardPopup = ref(false)
 const leaderboardPopupShown = ref(false)
+const bottomTabs = ref<HTMLElement | null>(null)
+const bottomTabsFade = ref({ left: false, right: false })
 const { langPref, toggleLang } = useLangPref()
 const { fontSize, cycleFontSize } = useFontSize()
 
@@ -260,21 +270,46 @@ const fontSizeTooltip = computed(() => {
   return '当前字号：护眼大号（点击切换为紧凑小号）'
 })
 
+const RANKING_POPUP_KEY = 'leetpath-ranking-popup-date'
+
+function shouldAutoShowRankingPopup(): boolean {
+  const today = todayLocalDate()
+  try {
+    if (!shouldAutoShowPopupOnce(localStorage.getItem(RANKING_POPUP_KEY), today)) return false
+    localStorage.setItem(RANKING_POPUP_KEY, today)
+  } catch {
+    // Storage 不可用时，组件内的 leaderboardPopupShown 仍保证本次会话只调度一次。
+  }
+  return true
+}
+
+function scheduleRankingPopup() {
+  if (leaderboardPopupShown.value) return
+  leaderboardPopupShown.value = true
+  if (!shouldAutoShowRankingPopup()) return
+  leaderboardPopupTimer = window.setTimeout(() => { showLeaderboardPopup.value = true }, 180)
+}
+
+function updateTabsFade() {
+  const nav = bottomTabs.value
+  bottomTabsFade.value = nav
+    ? tabsFadeState(nav)
+    : { left: false, right: false }
+}
+
 watch(() => [auth.me?.id, route.path], syncHeartbeat)
 watch(() => [auth.me?.id, route.path], () => {
-  if (!auth.me || leaderboardPopupShown.value || route.path === '/settings') return
-  leaderboardPopupShown.value = true
-  leaderboardPopupTimer = window.setTimeout(() => { showLeaderboardPopup.value = true }, 180)
+  if (auth.me && route.path !== '/settings') scheduleRankingPopup()
+  nextTick(updateTabsFade)
 })
 onMounted(() => {
   document.addEventListener('visibilitychange', onActivityVisibilityChange)
   window.addEventListener('focus', syncHeartbeat)
   window.addEventListener('blur', stopHeartbeat)
+  window.addEventListener('resize', updateTabsFade)
   syncHeartbeat()
-  if (auth.me && !leaderboardPopupShown.value && route.path !== '/settings') {
-    leaderboardPopupShown.value = true
-    leaderboardPopupTimer = window.setTimeout(() => { showLeaderboardPopup.value = true }, 180)
-  }
+  if (auth.me && route.path !== '/settings') scheduleRankingPopup()
+  nextTick(updateTabsFade)
 })
 onBeforeUnmount(() => {
   stopHeartbeat()
@@ -282,6 +317,7 @@ onBeforeUnmount(() => {
   document.removeEventListener('visibilitychange', onActivityVisibilityChange)
   window.removeEventListener('focus', syncHeartbeat)
   window.removeEventListener('blur', stopHeartbeat)
+  window.removeEventListener('resize', updateTabsFade)
 })
 
 async function onLogout() {

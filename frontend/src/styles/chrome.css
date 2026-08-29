@@ -266,6 +266,20 @@
 .bottom-tabs a.active { color: var(--accent); }
 .bottom-tabs .tab-icon { display: inline-flex; }
 
+/* 横滚边缘渐隐提示由 App 根据真实滚动位置切换。 */
+.bottom-tabs.fade-right {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);
+}
+.bottom-tabs.fade-left {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 32px);
+  mask-image: linear-gradient(to right, transparent, #000 32px);
+}
+.bottom-tabs.fade-left.fade-right {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 32px, #000 calc(100% - 32px), transparent);
+  mask-image: linear-gradient(to right, transparent, #000 32px, #000 calc(100% - 32px), transparent);
+}
+
 /* ---------- 移动端（≤1023px）：报头折叠为顶栏 + 底栏 ---------- */
 @media (max-width: 1023px) {
   /* 需与 base.css 主题块（:root[data-theme]）同优先级，靠加载顺序覆盖 */
