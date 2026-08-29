@@ -156,7 +156,12 @@ class QuizRevealOut(BaseModel):
     is_answered: bool = True
 
 
-def _question_item(q_obj: QuizQuestion, rec: QuizRecord | None) -> QuizQuestionItem:
+def _question_item(
+    q_obj: QuizQuestion,
+    rec: QuizRecord | None,
+    *,
+    include_analysis: bool = False,
+) -> QuizQuestionItem:
     if q_obj.type == "open":
         is_answered = _is_open_revealed(q_obj, rec)
     else:
@@ -179,7 +184,7 @@ def _question_item(q_obj: QuizQuestion, rec: QuizRecord | None) -> QuizQuestionI
         wrong_count=rec.wrong_count if rec else 0,
         attempts_count=rec.attempts_count if rec else 0,
         answer=q_obj.answer if is_answered and q_obj.type != "open" else None,
-        analysis=q_obj.analysis if is_answered else None,
+        analysis=q_obj.analysis if (is_answered or include_analysis) else None,
     )
 
 
@@ -255,6 +260,7 @@ def list_questions(
     random_order: bool = False,
     exclude_skipped: bool = False,
     exclude_open: bool = False,
+    include_analysis: bool = False,
     limit: int | None = Query(
         None,
         ge=0,
@@ -326,7 +332,10 @@ def list_questions(
     else:
         paged = filtered[offset:]
 
-    items = [_question_item(q_obj, user_records.get(q_obj.id)) for q_obj in paged]
+    items = [
+        _question_item(q_obj, user_records.get(q_obj.id), include_analysis=include_analysis)
+        for q_obj in paged
+    ]
 
     return {
         "total": total_matched,

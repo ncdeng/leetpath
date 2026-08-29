@@ -265,7 +265,7 @@ function toggleCard(id: number) {
 async function loadQuestions() {
   try {
     const res = await api.get<{ total: number; items: QuizQuestionItem[] }>(
-      `/api/quiz/questions?bank=${encodeURIComponent('OnCall 智能值班项目')}&limit=100`,
+      `/api/quiz/questions?bank=${encodeURIComponent('OnCall 智能值班项目')}&include_analysis=true&limit=100`,
     )
     questions.value = res.items
     // 默认展开前 2 个
