@@ -24,6 +24,152 @@
   white-space: nowrap;
 }
 
+/* ---------- 沉浸背题/学习模式 (Study Deck) ---------- */
+.oncall-study-deck {
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.oncall-study-progress {
+  margin-bottom: 24px;
+}
+
+.oncall-deck-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.oncall-deck-cats {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.oncall-stage {
+  min-height: 420px;
+  margin-bottom: 28px;
+  perspective: 1000px;
+}
+
+.oncall-flashcard {
+  min-height: 380px;
+  padding: 48px 36px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  cursor: pointer;
+  background: var(--surface);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  user-select: none;
+}
+
+.oncall-flashcard:hover {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+.oncall-flashcard .fc-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+
+.oncall-flashcard .fc-stem {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.45;
+  max-width: 760px;
+  margin-bottom: 28px;
+}
+
+.oncall-flashcard .fc-hint {
+  font-size: 14px;
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 翻开后的答题看板 */
+.oncall-answer-board {
+  padding: 32px;
+  background: var(--surface);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+
+.oncall-answer-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 18px;
+  border-bottom: 0.5px solid var(--border);
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.oncall-answer-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.4;
+}
+
+.oncall-answer-content {
+  font-size: 15px;
+  line-height: 1.75;
+  color: var(--text);
+}
+
+.oncall-study-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding-top: 12px;
+}
+
+.oncall-study-btns {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.btn-remember {
+  background: var(--accent);
+  color: #ffffff;
+  border: none;
+  font-weight: 600;
+}
+
+.btn-remember:hover {
+  opacity: 0.92;
+}
+
+.oncall-shortcuts-tip {
+  font-size: 13px;
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 /* ---------- 概览与架构笔记 ---------- */
 .blueprint-grid {
   display: grid;
@@ -286,6 +432,15 @@
 @media (max-width: 1023px) {
   .bp-card {
     padding: 20px 18px;
+  }
+  .oncall-flashcard {
+    padding: 32px 20px;
+  }
+  .oncall-flashcard .fc-stem {
+    font-size: 20px;
+  }
+  .oncall-answer-board {
+    padding: 20px 16px;
   }
   .qdeck-card {
     padding: 16px 16px;

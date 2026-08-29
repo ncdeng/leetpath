@@ -7,16 +7,16 @@
       </div>
       <div class="head-stats">
         <div class="stat">
-          <span class="num accent">63</span>
-          <span class="lbl">核心面试真题</span>
+          <span class="num accent">{{ rememberedSet.size }}</span>
+          <span class="lbl">已掌握</span>
         </div>
         <div class="stat">
-          <span class="num">5</span>
-          <span class="lbl">技术模块深度拆解</span>
+          <span class="num">{{ questions.length - rememberedSet.size }}</span>
+          <span class="lbl">待学习</span>
         </div>
         <div class="stat">
-          <span class="num">0 ➔ 1</span>
-          <span class="lbl">实战架构复盘</span>
+          <span class="num">{{ questions.length || 63 }}</span>
+          <span class="lbl">总题目数</span>
         </div>
       </div>
     </div>
@@ -24,11 +24,14 @@
     <!-- 导航选项卡 -->
     <div class="oncall-tabs-wrap">
       <div class="segmented oncall-tabs">
+        <button :class="{ active: currentTab === 'study' }" @click="currentTab = 'study'">
+          📖 逐题沉浸学习 (Study Deck)
+        </button>
         <button :class="{ active: currentTab === 'notes' }" @click="currentTab = 'notes'">
-          📋 架构笔记与 60s 话术
+          📋 架构全景与 60s 话术
         </button>
         <button :class="{ active: currentTab === 'questions' }" @click="currentTab = 'questions'">
-          🎯 63 道面试真题专栏
+          🎯 63 道真题检索专栏
         </button>
         <button :class="{ active: currentTab === 'mock' }" @click="currentTab = 'mock'">
           🤖 AI 面试官模拟实战
@@ -36,8 +39,161 @@
       </div>
     </div>
 
+    <!-- ==================== 模块 0: 逐题沉浸学习模式 ==================== -->
+    <section v-if="currentTab === 'study'" class="oncall-study-deck">
+      <!-- 进度条 -->
+      <div class="progress-track oncall-study-progress">
+        <div
+          class="seg"
+          :style="{
+            width: `${questions.length ? (rememberedSet.size / questions.length) * 100 : 0}%`,
+            background: 'var(--accent)'
+          }"
+        ></div>
+      </div>
+
+      <!-- 分类切题快捷筛选条 -->
+      <div class="oncall-deck-toolbar">
+        <div class="oncall-deck-cats">
+          <button
+            class="filter-btn"
+            :class="{ active: studyFilter === 'all' }"
+            @click="setStudyFilter('all')"
+          >
+            全部 ({{ questions.length }})
+          </button>
+          <button
+            class="filter-btn"
+            :class="{ active: studyFilter === 'arch' }"
+            @click="setStudyFilter('arch')"
+          >
+            01. 背景与选型
+          </button>
+          <button
+            class="filter-btn"
+            :class="{ active: studyFilter === 'agent' }"
+            @click="setStudyFilter('agent')"
+          >
+            02. Agent 与 RAG
+          </button>
+          <button
+            class="filter-btn"
+            :class="{ active: studyFilter === 'hard' }"
+            @click="setStudyFilter('hard')"
+          >
+            03. 核心难点与防爆
+          </button>
+          <button
+            class="filter-btn"
+            :class="{ active: studyFilter === 'pressure' }"
+            @click="setStudyFilter('pressure')"
+          >
+            04. 压力面与指标
+          </button>
+        </div>
+
+        <div class="mono" style="font-size: 14px; font-weight: 600; color: var(--text-dim);">
+          {{ currentStudyIndex + 1 }} / {{ activeStudyList.length }}
+        </div>
+      </div>
+
+      <div v-if="loading" class="empty">正在加载 OnCall 题库…</div>
+      <div v-else-if="activeStudyList.length === 0" class="empty">当前筛选下没有题目</div>
+
+      <!-- 卡片学习舞台 -->
+      <div v-else class="oncall-stage">
+        <!-- 卡片正面（未翻开） -->
+        <div
+          v-if="!isFlipped"
+          class="oncall-flashcard"
+          @click="isFlipped = true"
+        >
+          <div class="fc-meta">
+            <span class="badge badge-source">{{ currentQ?.category || 'OnCall项目' }}</span>
+            <span class="badge badge-medium mono">第 {{ formatOrdinal(currentQ?.ordinal) }} 题</span>
+            <span v-if="currentQ && rememberedSet.has(currentQ.id)" class="badge badge-remembered">
+              <AppIcon name="check" :size="12" /> 已掌握
+            </span>
+          </div>
+
+          <div class="fc-stem">{{ currentQ?.stem }}</div>
+
+          <div class="fc-hint">
+            <AppIcon name="sparkles" :size="15" /> 点击卡片翻开参考答案与面试要点（Space / Enter）
+          </div>
+        </div>
+
+        <!-- 卡片背面（已翻开） -->
+        <div v-else class="oncall-answer-board">
+          <div class="oncall-answer-topbar">
+            <div>
+              <div class="fc-meta" style="margin-bottom: 6px;">
+                <span class="badge badge-source">{{ currentQ?.category || 'OnCall项目' }}</span>
+                <span class="badge badge-medium mono">第 {{ formatOrdinal(currentQ?.ordinal) }} 题</span>
+                <span v-if="currentQ && rememberedSet.has(currentQ.id)" class="badge badge-remembered">
+                  <AppIcon name="check" :size="12" /> 已掌握
+                </span>
+              </div>
+              <div class="oncall-answer-title">{{ currentQ?.stem }}</div>
+            </div>
+
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <button class="btn btn-sm btn-ghost" @click="isFlipped = false">
+                <AppIcon name="refresh" :size="13" /> 翻回正面
+              </button>
+              <button class="btn btn-sm btn-primary" @click="openAiTutor(currentQ!)">
+                <AppIcon name="robot" :size="14" /> 追问 AI 导师
+              </button>
+            </div>
+          </div>
+
+          <!-- 解析与参考答案 Markdown -->
+          <div class="oncall-answer-content markdown-body" v-html="renderMd(currentQ?.analysis || '暂无解析')"></div>
+        </div>
+      </div>
+
+      <!-- 底部学习操作栏 -->
+      <div class="oncall-study-footer" v-if="activeStudyList.length > 0">
+        <div class="oncall-study-btns">
+          <button
+            class="btn btn-sm"
+            :disabled="currentStudyIndex <= 0"
+            @click="prevStudyQuestion"
+          >
+            <AppIcon name="chevron-left" :size="14" /> 上一题
+          </button>
+          <button
+            class="btn btn-sm btn-ghost"
+            @click="markForgot"
+          >
+            ❌ 没记住 (1)
+          </button>
+          <button
+            class="btn btn-sm btn-remember"
+            @click="markRemembered"
+          >
+            ✅ 记住了 (2)
+          </button>
+          <button
+            class="btn btn-sm"
+            :disabled="currentStudyIndex >= activeStudyList.length - 1"
+            @click="nextStudyQuestion"
+          >
+            下一题 <AppIcon name="chevron-right" :size="14" />
+          </button>
+        </div>
+
+        <div class="oncall-shortcuts-tip desktop-only">
+          <span><kbd>Space</kbd> 翻面</span>
+          <span><kbd>1</kbd> 没记住</span>
+          <span><kbd>2</kbd> 记住了</span>
+          <span><kbd>←</kbd> <kbd>→</kbd> 切题</span>
+        </div>
+      </div>
+    </section>
+
     <!-- ==================== 模块 1: 架构笔记与 60s 话术 ==================== -->
-    <section v-if="currentTab === 'notes'" class="blueprint-grid">
+    <section v-else-if="currentTab === 'notes'" class="blueprint-grid">
       <!-- 60s 满分话术 -->
       <div class="card bp-card">
         <h2><AppIcon name="sparkles" :size="20" /> 60 秒口头项目介绍模板（面试必背）</h2>
@@ -225,18 +381,106 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { api } from '../api'
 import AiTutorDrawer, { type PromptPreset } from '../components/AiTutorDrawer.vue'
 import AppIcon from '../components/AppIcon.vue'
 import { renderMarkdown } from '../markdown'
 import type { QuizQuestionItem } from '../types'
 
-const currentTab = ref<'notes' | 'questions' | 'mock'>('notes')
+const currentTab = ref<'study' | 'notes' | 'questions' | 'mock'>('study')
 const questions = ref<QuizQuestionItem[]>([])
+const loading = ref(true)
 const expandedIds = ref<Set<number>>(new Set())
 const filterCategory = ref<'all' | 'arch' | 'agent' | 'hard' | 'pressure'>('all')
 const searchQuery = ref('')
+
+// 沉浸背题模式状态
+const studyFilter = ref<'all' | 'arch' | 'agent' | 'hard' | 'pressure'>('all')
+const currentStudyIndex = ref(0)
+const isFlipped = ref(false)
+const rememberedSet = ref<Set<number>>(new Set())
+
+const STORAGE_KEY = 'leetpath_oncall_remembered'
+
+function loadRemembered() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (raw) {
+      const arr = JSON.parse(raw)
+      if (Array.isArray(arr)) {
+        rememberedSet.value = new Set(arr)
+      }
+    }
+  } catch {
+    // ignore
+  }
+}
+
+function saveRemembered() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(Array.from(rememberedSet.value)))
+  } catch {
+    // ignore
+  }
+}
+
+function markRemembered() {
+  if (currentQ.value) {
+    rememberedSet.value.add(currentQ.value.id)
+    saveRemembered()
+    // 异步同步至服务端已揭晓状态
+    api.post(`/api/quiz/questions/${currentQ.value.id}/reveal`).catch(() => {})
+  }
+  nextStudyQuestion()
+}
+
+function markForgot() {
+  if (currentQ.value) {
+    rememberedSet.value.delete(currentQ.value.id)
+    saveRemembered()
+  }
+  nextStudyQuestion()
+}
+
+const activeStudyList = computed(() => {
+  let list = questions.value
+  if (studyFilter.value === 'arch') {
+    list = list.filter((q) => (q.ordinal || 0) <= 15)
+  } else if (studyFilter.value === 'agent') {
+    list = list.filter((q) => (q.ordinal || 0) > 15 && (q.ordinal || 0) <= 35)
+  } else if (studyFilter.value === 'hard') {
+    list = list.filter((q) => (q.ordinal || 0) > 35 && (q.ordinal || 0) <= 50)
+  } else if (studyFilter.value === 'pressure') {
+    list = list.filter((q) => (q.ordinal || 0) > 50)
+  }
+  return list
+})
+
+const currentQ = computed<QuizQuestionItem | null>(() => {
+  if (activeStudyList.value.length === 0) return null
+  return activeStudyList.value[currentStudyIndex.value] || null
+})
+
+function setStudyFilter(f: 'all' | 'arch' | 'agent' | 'hard' | 'pressure') {
+  studyFilter.value = f
+  currentStudyIndex.value = 0
+  isFlipped.value = false
+}
+
+function prevStudyQuestion() {
+  if (currentStudyIndex.value > 0) {
+    currentStudyIndex.value--
+    isFlipped.value = false
+  }
+}
+
+function nextStudyQuestion() {
+  if (currentStudyIndex.value < activeStudyList.value.length - 1) {
+    currentStudyIndex.value++
+    isFlipped.value = false
+  }
+}
 
 // AI Drawer 状态
 const aiDrawerVisible = ref(false)
@@ -263,6 +507,7 @@ function toggleCard(id: number) {
 }
 
 async function loadQuestions() {
+  loading.value = true
   try {
     const res = await api.get<{ total: number; items: QuizQuestionItem[] }>(
       `/api/quiz/questions?bank=${encodeURIComponent('OnCall 智能值班项目')}&include_analysis=true&limit=100`,
@@ -275,6 +520,8 @@ async function loadQuestions() {
     }
   } catch {
     // ignore
+  } finally {
+    loading.value = false
   }
 }
 
@@ -391,7 +638,35 @@ function startMock(scene: string) {
   aiDrawerVisible.value = true
 }
 
+function onKeydown(e: KeyboardEvent) {
+  if (currentTab.value !== 'study' || aiDrawerVisible.value) return
+  if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+
+  if (e.code === 'Space' || e.key === 'Enter') {
+    e.preventDefault()
+    isFlipped.value = !isFlipped.value
+  } else if (e.key === '1') {
+    e.preventDefault()
+    markForgot()
+  } else if (e.key === '2') {
+    e.preventDefault()
+    markRemembered()
+  } else if (e.key === 'ArrowLeft') {
+    e.preventDefault()
+    prevStudyQuestion()
+  } else if (e.key === 'ArrowRight') {
+    e.preventDefault()
+    nextStudyQuestion()
+  }
+}
+
 onMounted(() => {
+  loadRemembered()
   loadQuestions()
+  window.addEventListener('keydown', onKeydown)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeydown)
 })
 </script>
