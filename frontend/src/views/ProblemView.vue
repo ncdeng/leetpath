@@ -171,8 +171,11 @@
               <span class="shortcut-tip" v-if="isDesktop">Ctrl+Enter 提交 · Ctrl+S 保存</span>
             </div>
             <div class="acm-hint">
-              <span v-if="ioMode === 'leetcode'">力扣模式：只实现下方函数 / 设计类，签名与力扣一致。评测仍用本题用例，不必自己处理输入输出。</span>
-              <span v-else>ACM 模式：提交完整程序，自己读 stdin / 打印 stdout，格式以题面「输入 / 输出格式」为准</span>
+              <p class="acm-hint-full">{{ acmHintFull }}</p>
+              <details class="acm-hint-mobile">
+                <summary>{{ acmHintShort }}</summary>
+                <p class="acm-hint-expanded">{{ acmHintFull }}</p>
+              </details>
               <RouterLink to="/handbook" class="acm-hint-link">写法对比 · 极速 I/O 模板 →</RouterLink>
             </div>
             <Editor v-model="code" :language="language" />
@@ -434,6 +437,15 @@ const difficultyText = computed(() => {
   const d = problem.value?.difficulty
   return d === 'easy' ? '简单' : d === 'medium' ? '中等' : '困难'
 })
+
+const acmHintShort = computed(() =>
+  ioMode.value === 'leetcode' ? '力扣模式：只写函数 / 设计类' : 'ACM 模式：读 stdin、打印 stdout',
+)
+const acmHintFull = computed(() =>
+  ioMode.value === 'leetcode'
+    ? '力扣模式：只实现下方函数 / 设计类，签名与力扣一致。评测仍用本题用例，不必自己处理输入输出。'
+    : 'ACM 模式：提交完整程序，自己读 stdin / 打印 stdout，格式以题面「输入 / 输出格式」为准',
+)
 
 const formattedTimer = computed(() => {
   const total = Math.max(0, timerSeconds.value)

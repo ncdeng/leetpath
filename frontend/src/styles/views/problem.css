@@ -290,6 +290,13 @@ body:has(.zen-container) .masthead { display: none !important; }
   color: var(--text-faint);
   line-height: 1.5;
 }
+.acm-hint-full,
+.acm-hint-expanded {
+  margin: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.acm-hint-mobile { display: none; }
 .acm-hint-link { color: var(--accent); text-decoration: none; white-space: nowrap; font-weight: 550; }
 .acm-hint-link:hover { text-decoration: underline; }
 
@@ -471,7 +478,27 @@ body:has(.zen-container) .masthead { display: none !important; }
   .editor-toolbar .btn { min-height: 44px; }
   .mode-switch button { min-height: 40px; padding: 8px 16px; }
   .editor-lang-label { padding: 8px 12px; }
-  .acm-hint { padding: 10px 14px; }
+  .acm-hint { padding: 10px 14px; align-items: flex-start; }
+  .acm-hint-full { display: none; }
+  .acm-hint-mobile {
+    display: block;
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+  .acm-hint-mobile summary {
+    cursor: pointer;
+    list-style: none;
+    font-weight: 550;
+  }
+  .acm-hint-mobile summary::-webkit-details-marker { display: none; }
+  .acm-hint-mobile summary::after {
+    content: " · 展开协议";
+    color: var(--accent);
+    font-weight: 550;
+  }
+  .acm-hint-mobile[open] summary::after { content: " · 收起"; }
+  .acm-hint-expanded { margin: 8px 0 0; }
+  .acm-hint-link { flex: 1 1 100%; }
 
   /* 提交历史 / 测试点行更易点 */
   .sub-line { padding: 10px 8px; }
