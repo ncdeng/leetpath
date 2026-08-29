@@ -777,7 +777,9 @@ code, pre, .mono { font-family: var(--mono); }
   font-family: var(--display-font);
   line-height: 1.16;
   margin: 0;
+  text-wrap: balance;
 }
+.kw { white-space: nowrap; }
 .page-head {
   display: flex;
   justify-content: space-between;
@@ -801,6 +803,8 @@ code, pre, .mono { font-family: var(--mono); }
   font-variant-numeric: tabular-nums;
 }
 .head-stats .stat .num.accent { color: var(--accent); }
+.head-stats .stat .num.good { color: var(--green); }
+.head-stats .stat .num.bad { color: var(--red); }
 .head-stats .stat .lbl {
   font-size: 12px;
   color: var(--text-faint);

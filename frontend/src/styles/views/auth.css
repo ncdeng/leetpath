@@ -58,6 +58,7 @@
   letter-spacing: var(--display-tracking);
   margin: 0 0 16px;
   color: var(--text);
+  text-wrap: balance;
 }
 
 .gradient-text { color: var(--accent); }

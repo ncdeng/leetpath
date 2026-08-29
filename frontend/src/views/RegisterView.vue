@@ -14,7 +14,7 @@
         </h1>
 
         <p class="auth-hero-desc">
-          汇聚力扣热题 100、面经高频手撕与 750+ 道大模型八股自测（含 Agent Harness），支持 Docker 沙箱秒级评测与自定义 AI 导师答疑。
+          汇聚力扣热题 100、面经高频<span class="kw">手撕</span>与 750+ 道大模型八股自测（含 Agent Harness），支持 Docker 沙箱秒级评测与自定义 AI 导师答疑。
         </p>
 
         <!-- 核心特性（极简单行列表） -->
