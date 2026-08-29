@@ -2,7 +2,7 @@
   <div>
     <!-- 1. 全局悬浮按钮（52px 圆形 accent 渐变，可拖拽） -->
     <div
-      v-if="!assistant.isVisible.value && auth.me"
+      v-if="!assistant.isVisible.value && auth.me && !hideCapsule"
       class="floating-capsule"
       :class="{ 'has-context': isContextual, 'is-dragging': isDraggingCapsule }"
       :style="capsuleStyle"
@@ -302,6 +302,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import AiSettingsModal from './AiSettingsModal.vue'
 import AppIcon from './AppIcon.vue'
 import {
@@ -311,11 +312,13 @@ import {
   clampPoint,
   createDragSession,
   dragSessionMove,
+  isBottomNavVisible,
   isFloatingSheet,
   loadLauncherChrome,
   parseCssPx,
   rectSize,
   saveLauncherChrome,
+  shouldHideCapsule,
   type DragSession,
   type Point,
   type Size,
@@ -338,6 +341,11 @@ const auth = useAuthStore()
 const ai = useAiStore()
 const assistant = useAiAssistant()
 const toast = useToast()
+const route = useRoute()
+const viewportWidth = ref(typeof window !== 'undefined' ? window.innerWidth : Number.POSITIVE_INFINITY)
+const hideCapsule = computed(() =>
+  shouldHideCapsule(route.meta, isBottomNavVisible(viewportWidth.value)),
+)
 
 const showSettings = ref(false)
 const generating = ref(false)
@@ -668,6 +676,7 @@ function onWindowTouchStart(e: TouchEvent) {
 
 function onViewportChange() {
   const size = viewportSize()
+  viewportWidth.value = size.width
   if (capsulePos.value.x !== null && capsulePos.value.y !== null) {
     capsulePos.value = clampCapsule({ x: capsulePos.value.x, y: capsulePos.value.y })
   }
@@ -965,6 +974,7 @@ watch(
 
 onMounted(() => {
   if (typeof window === 'undefined') return
+  viewportWidth.value = window.innerWidth
   const saved = loadLauncherChrome(browserStorage())
   if (saved.capsule) {
     capsulePos.value = clampCapsule(saved.capsule)

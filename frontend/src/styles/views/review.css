@@ -277,6 +277,13 @@
   margin-top: 12px;
 }
 
+@media (min-width: 1024px) {
+  .review-actions {
+    --floating-safe-pad: 96px;
+    padding-right: var(--floating-safe-pad);
+  }
+}
+
 /* ---------- 移动端 ≤1023px：单列书页、操作条纵排、触控目标 ≥44px ---------- */
 @media (max-width: 1023px) {
   .review-head-control {
