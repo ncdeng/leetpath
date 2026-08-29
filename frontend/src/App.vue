@@ -148,7 +148,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AiSettingsModal from './components/AiSettingsModal.vue'
 import AppIcon from './components/AppIcon.vue'
@@ -262,19 +262,61 @@ const fontSizeTooltip = computed(() => {
 
 watch(() => [auth.me?.id, route.path], syncHeartbeat)
 watch(() => [auth.me?.id, route.path], () => {
-  if (!auth.me || leaderboardPopupShown.value || route.path === '/settings') return
+  if (!auth.me || route.path === '/settings') return
+  scheduleRankingPopup()
+})
+
+const RANKING_POPUP_KEY = 'leetpath-ranking-popup-date'
+
+/** 排行榜弹窗每个自然日最多自动弹一次，其余时间走导航入口，避免每次整页加载都打断 */
+function shouldAutoShowRankingPopup(): boolean {
+  const today = new Date().toISOString().slice(0, 10)
+  try {
+    if (localStorage.getItem(RANKING_POPUP_KEY) === today) return false
+    localStorage.setItem(RANKING_POPUP_KEY, today)
+  } catch {
+    // localStorage 不可用（隐私模式等）时保持每日首次弹出的会话内兜底
+  }
+  return true
+}
+
+function scheduleRankingPopup() {
+  if (leaderboardPopupShown.value) return
   leaderboardPopupShown.value = true
+  if (!shouldAutoShowRankingPopup()) return
   leaderboardPopupTimer = window.setTimeout(() => { showLeaderboardPopup.value = true }, 180)
+}
+
+/** 移动端底栏项目溢出可横滚：路由切换后把激活项滚进视野 */
+function scrollActiveTabIntoView() {
+  const nav = document.querySelector('.bottom-tabs')
+  const active = nav?.querySelector('a.active')
+  if (!nav || !active) return
+  const el = active as HTMLElement
+  const target = el.offsetLeft - (nav.clientWidth - el.offsetWidth) / 2
+  nav.scrollTo({ left: Math.max(0, target), behavior: 'smooth' })
+}
+
+/** 按滚动位置切换底栏两端渐隐，提示「还有更多入口」 */
+function updateTabsFade() {
+  const nav = document.querySelector('.bottom-tabs') as HTMLElement | null
+  if (!nav) return
+  nav.classList.toggle('fade-left', nav.scrollLeft > 4)
+  nav.classList.toggle('fade-right', nav.scrollLeft + nav.clientWidth < nav.scrollWidth - 4)
+}
+
+watch(() => [auth.me?.id, route.path], () => {
+  nextTick(() => { scrollActiveTabIntoView(); updateTabsFade() })
 })
 onMounted(() => {
   document.addEventListener('visibilitychange', onActivityVisibilityChange)
   window.addEventListener('focus', syncHeartbeat)
   window.addEventListener('blur', stopHeartbeat)
+  window.addEventListener('resize', updateTabsFade)
+  document.querySelector('.bottom-tabs')?.addEventListener('scroll', updateTabsFade, { passive: true })
   syncHeartbeat()
-  if (auth.me && !leaderboardPopupShown.value && route.path !== '/settings') {
-    leaderboardPopupShown.value = true
-    leaderboardPopupTimer = window.setTimeout(() => { showLeaderboardPopup.value = true }, 180)
-  }
+  if (auth.me && route.path !== '/settings') scheduleRankingPopup()
+  nextTick(updateTabsFade)
 })
 onBeforeUnmount(() => {
   stopHeartbeat()
@@ -282,6 +324,8 @@ onBeforeUnmount(() => {
   document.removeEventListener('visibilitychange', onActivityVisibilityChange)
   window.removeEventListener('focus', syncHeartbeat)
   window.removeEventListener('blur', stopHeartbeat)
+  window.removeEventListener('resize', updateTabsFade)
+  document.querySelector('.bottom-tabs')?.removeEventListener('scroll', updateTabsFade)
 })
 
 async function onLogout() {

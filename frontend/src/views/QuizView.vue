@@ -8,21 +8,21 @@
       </div>
       <div class="head-stats" v-if="stats">
         <div class="stat">
-          <span class="num accent">{{ stats.answered_count }}</span>
+          <span class="num" :class="{ accent: stats.answered_count > 0 }">{{ stats.answered_count }}</span>
           <span class="lbl">已刷题数</span>
         </div>
         <div class="stat">
-          <span class="num" :style="{ color: stats.accuracy_rate >= 80 ? 'var(--green)' : 'var(--text)' }">
+          <span class="num" :style="stats.answered_count > 0 && stats.accuracy_rate >= 80 ? { color: 'var(--green)' } : undefined">
             {{ stats.accuracy_rate }}%
           </span>
           <span class="lbl">正确率</span>
         </div>
         <div class="stat">
-          <span class="num" style="color:var(--red)">{{ stats.wrong_count }}</span>
+          <span class="num" :style="stats.wrong_count > 0 ? { color: 'var(--red)' } : undefined">{{ stats.wrong_count }}</span>
           <span class="lbl">待消灭错题</span>
         </div>
         <div class="stat">
-          <span class="num" style="color:var(--green)">{{ stats.slashed_count }}</span>
+          <span class="num" :style="stats.slashed_count > 0 ? { color: 'var(--green)' } : undefined">{{ stats.slashed_count }}</span>
           <span class="lbl">已斩题</span>
         </div>
         <div class="stat">

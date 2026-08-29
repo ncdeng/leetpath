@@ -756,6 +756,8 @@ code, pre, .mono { font-family: var(--mono); }
   font-family: var(--display-font);
   line-height: 1.16;
   margin: 0;
+  /* CJK 大标题均衡断行：避免「的」等虚词孤字成行（旧浏览器自动降级为默认断行） */
+  text-wrap: balance;
 }
 .page-head {
   display: flex;

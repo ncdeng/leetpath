@@ -7,7 +7,7 @@
       </div>
       <div class="head-stats">
         <div class="stat">
-          <span class="num accent">{{ stats.solved }}</span>
+          <span class="num" :class="{ accent: stats.solved > 0 }">{{ stats.solved }}</span>
           <span class="lbl">已通过</span>
         </div>
         <div class="stat">

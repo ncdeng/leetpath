@@ -31,7 +31,7 @@
   -webkit-user-select: none;
   touch-action: none;
   -webkit-touch-callout: none;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.25s ease;
 }
 /* 子元素不接收事件：点击/拖拽全部落在胶囊本体（与脚本事件模型一致） */
 .floating-capsule * {
@@ -1048,6 +1048,12 @@
   .floating-capsule {
     bottom: calc(var(--bottom-nav-h, 56px) + 12px);
     right: 12px;
+  }
+  /* 下滑阅读/做题时隐藏悬浮球（App.vue 滚动方向判定），上滑恢复 */
+  .floating-capsule.is-scroll-hidden {
+    transform: translateY(calc(var(--bottom-nav-h, 56px) + 72px));
+    opacity: 0;
+    pointer-events: none;
   }
   /* 触控目标加大 */
   .traffic-dot { width: 44px; height: 44px; }

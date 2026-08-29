@@ -311,6 +311,10 @@ const companyList = computed<CompanyGroup[]>(() => {
       } else if (minDays <= 7) {
         ddayText = `最早 D-${minDays} 截止`
         ddayCls = 'urgent'
+      } else if (minDays <= 14) {
+        // 两周内截止： amber 提示档，避免 D-8 与 D-93 同灰无从分辨缓急
+        ddayText = `最早 D-${minDays} 截止`
+        ddayCls = 'soon'
       } else {
         ddayText = `最早 D-${minDays} 截止`
         ddayCls = 'normal'
@@ -406,6 +410,7 @@ function ddayText(job: Job) {
 function ddayClass(job: Job) {
   if (isClosed(job)) return 'closed'
   if (job.days_left !== null && job.days_left <= 7) return 'urgent'
+  if (job.days_left !== null && job.days_left <= 14) return 'soon'
   return 'ok'
 }
 

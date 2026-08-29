@@ -1056,6 +1056,9 @@
   /* 页头统计更紧凑 */
   .quiz-container .head-stats {
     gap: 14px 22px;
+    /* 手机上一行放不下 5 项统计：允许换行而不是互相挤压 */
+    flex-wrap: wrap;
+    row-gap: 12px;
   }
   .quiz-container .head-stats .stat .num {
     font-size: 22px;

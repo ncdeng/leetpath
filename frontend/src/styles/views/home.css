@@ -19,13 +19,20 @@
   margin: 0 0 16px;
   /* font-size 由 html[data-font-size] 三档体系强压（--font-display），勿覆盖 */
 }
-.hero .grad { color: var(--accent); }
+.hero .grad {
+  color: var(--accent);
+  /* 独立成行的品牌句在窄屏均衡断行（如「极客刷题与算法 / 手撕平台」而非拆散「手撕」） */
+  display: inline-block;
+  text-wrap: balance;
+}
 .hero .lede {
   color: var(--text-dim);
   margin: 0 0 32px;
   font-size: var(--font-base);
   line-height: 1.8;
   max-width: 620px;
+  /* 段落末行避孤字：缓解「秋招」等词被硬性拆到行首尾 */
+  text-wrap: pretty;
 }
 
 /* 统计资料条：发丝线分隔的"资料卡"，无边无影 */

@@ -479,6 +479,16 @@ body:has(.zen-container) .masthead { display: none !important; }
   .filters .input { max-width: none; flex: 1 1 100%; }
   .filters .select { flex: 1 1 auto; min-height: 40px; }
 
+  /* 做题页工具栏说明长句折为单行省略，给编辑器让出竖向空间（完整说明走「写法对比」链接） */
+  .acm-hint > span {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
   /* 工作台：单列布局 */
   .problem-layout { grid-template-columns: 1fr; }
   .pane-statement { max-height: none; padding: 20px 18px; }

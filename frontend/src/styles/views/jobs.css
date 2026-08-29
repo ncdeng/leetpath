@@ -153,6 +153,7 @@
   flex: none;
 }
 .dday-pill.urgent { color: var(--red); background: var(--red-soft); }
+.dday-pill.soon { color: var(--amber); background: var(--amber-soft); }
 .dday-pill.ok { color: var(--green); background: var(--green-soft); }
 .dday-pill.normal { color: var(--text-dim); background: var(--surface-2); }
 .roles-preview {
@@ -239,6 +240,7 @@
   border-radius: 999px;
 }
 .dday-mini.urgent { color: var(--red); background: var(--red-soft); }
+.dday-mini.soon { color: var(--amber); background: var(--amber-soft); }
 .dday-mini.ok { color: var(--green); background: var(--green-soft); }
 .dday-mini.closed { color: var(--text-faint); background: var(--surface-3); }
 .pos-actions { display: flex; gap: 8px; align-items: center; flex: none; }

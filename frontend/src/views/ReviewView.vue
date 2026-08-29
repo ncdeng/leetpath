@@ -27,7 +27,7 @@
 
       <div class="head-stats">
         <div class="stat">
-          <span class="num accent">{{ rememberedCount }}</span>
+          <span class="num" :class="{ accent: rememberedCount > 0 }">{{ rememberedCount }}</span>
           <span class="lbl">已记住</span>
         </div>
         <div class="stat">

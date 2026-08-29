@@ -4,7 +4,7 @@
     <div
       v-if="!assistant.isVisible.value && auth.me"
       class="floating-capsule"
-      :class="{ 'has-context': isContextual, 'is-dragging': isDraggingCapsule }"
+      :class="{ 'has-context': isContextual, 'is-dragging': isDraggingCapsule, 'is-scroll-hidden': capsuleHiddenByScroll }"
       :style="capsuleStyle"
       @pointerdown="onCapsulePointerDown"
       @touchstart="onCapsuleTouchStart"
@@ -665,6 +665,22 @@ function onWindowTouchStart(e: TouchEvent) {
   beginWindowDrag(t.clientX, t.clientY, e.currentTarget as HTMLElement, 'touch')
 }
 
+// 移动端：向下滚动时隐藏悬浮球避免遮挡内容（压主按钮/题干/徽章），向上滚动或回顶时恢复
+const capsuleHiddenByScroll = ref(false)
+let lastScrollY = 0
+
+function onWindowScroll() {
+  if (isDraggingCapsule.value) return
+  if (window.innerWidth > 1023) {
+    capsuleHiddenByScroll.value = false
+    return
+  }
+  const y = window.scrollY
+  if (y > lastScrollY + 6 && y > 80) capsuleHiddenByScroll.value = true
+  else if (y < lastScrollY - 6) capsuleHiddenByScroll.value = false
+  lastScrollY = y
+}
+
 function onViewportChange() {
   const size = viewportSize()
   if (capsulePos.value.x !== null && capsulePos.value.y !== null) {
@@ -963,11 +979,14 @@ onMounted(() => {
   }
   window.addEventListener('resize', onViewportChange)
   window.visualViewport?.addEventListener('resize', onViewportChange)
+  window.addEventListener('scroll', onWindowScroll, { passive: true })
+  onWindowScroll()
 })
 
 onBeforeUnmount(() => {
   stopActiveDrag?.()
   window.removeEventListener('resize', onViewportChange)
   window.visualViewport?.removeEventListener('resize', onViewportChange)
+  window.removeEventListener('scroll', onWindowScroll)
 })
 </script>
