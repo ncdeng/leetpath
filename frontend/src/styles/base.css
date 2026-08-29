@@ -801,6 +801,8 @@ code, pre, .mono { font-family: var(--mono); }
   font-variant-numeric: tabular-nums;
 }
 .head-stats .stat .num.accent { color: var(--accent); }
+.head-stats .stat .num.good { color: var(--green); }
+.head-stats .stat .num.bad { color: var(--red); }
 .head-stats .stat .lbl {
   font-size: 12px;
   color: var(--text-faint);
