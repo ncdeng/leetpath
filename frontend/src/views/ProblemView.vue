@@ -198,7 +198,7 @@
                   <div class="tc-row" :style="tc.is_sample ? 'cursor:pointer' : ''" @click="tc.is_sample && toggleTc(tc.ordinal)">
                     <span class="tc-ord">#{{ tc.ordinal }}</span>
                     <span v-if="tc.is_sample" class="tc-sample">样例</span>
-                    <span class="status-pill tc-status" :class="`st-${tc.status}`">{{ tc.status }}</span>
+                    <span class="status-pill tc-status" :class="'st-' + tc.status.toLowerCase()">{{ tc.status }}</span>
                     <span class="tc-time">{{ tc.runtime_ms ?? '-' }}ms</span>
                   </div>
                   <div v-if="tc.is_sample && expandedTc.has(tc.ordinal)" class="tc-detail">
@@ -233,7 +233,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { api } from '../api'
 import {
@@ -415,8 +415,15 @@ int main() {
 `,
 }
 
+const cleanStatementMd = computed(() => {
+  if (!problem.value) return ''
+  let md = problem.value.statement_md
+  md = md.replace(/^##\s*题目描述\s*\n+/i, '')
+  return md
+})
+
 const statementHtml = computed(() =>
-  problem.value ? renderMarkdown(problem.value.statement_md) : '',
+  cleanStatementMd.value ? renderMarkdown(cleanStatementMd.value) : '',
 )
 
 const solutionHtml = computed(() =>
@@ -808,7 +815,10 @@ async function loadAll(requestedSlug: string) {
   } finally {
     if (pageGeneration.isCurrent(generation) && slug.value === requestedSlug) {
       loading.value = false
-      if (statementPaneRef.value) statementPaneRef.value.scrollTop = 0
+      nextTick(() => {
+        if (statementPaneRef.value) statementPaneRef.value.scrollTop = 0
+        window.scrollTo(0, 0)
+      })
     }
   }
 }

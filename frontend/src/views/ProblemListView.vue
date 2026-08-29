@@ -37,8 +37,8 @@
       </select>
       <select v-model="source" class="select">
         <option value="">全部来源</option>
-        <option value="hot100">热题 100</option>
-        <option value="mianjing">面经手撕</option>
+        <option value="hot100">力扣热题 100</option>
+        <option value="mianjing">面经高频手撕 (19题)</option>
       </select>
       <select v-model="tag" class="select">
         <option value="">全部标签</option>
@@ -76,10 +76,17 @@
           </span>
           <span class="p-main">
             <span class="p-title">{{ problemHeading(p) }}</span>
+            <span v-if="isMianjing(p)" class="badge badge-mianjing" title="大厂高频面试手撕真题">
+              <AppIcon name="flame" :size="11" /> 面经高频
+            </span>
             <span class="p-slug">{{ p.slug }}</span>
           </span>
           <span class="badge" :class="`badge-${p.difficulty}`">{{ difficultyText(p.difficulty) }}</span>
-          <span class="p-src">{{ sourceBadgeTexts(p, true).join(' · ') }}</span>
+          <span class="p-src">
+            <span class="badge" :class="isMianjing(p) ? 'badge-mianjing' : 'badge-source'">
+              {{ isMianjing(p) ? '面经手撕' : '热题100' }}
+            </span>
+          </span>
           <span class="p-tags">{{ p.tags.slice(0, 3).join(' · ') }}</span>
           <span class="p-arrow"><AppIcon name="chevron-right" :size="15" /></span>
         </RouterLink>
@@ -102,6 +109,10 @@ const q = ref('')
 const difficulty = ref('')
 const source = ref('')
 const tag = ref('')
+
+function isMianjing(p: ProblemListItem): boolean {
+  return p.source === 'mianjing' || (p.tags || []).includes('面经')
+}
 
 const sortField = ref<'id' | 'title' | 'difficulty' | 'status' | 'source'>('id')
 const sortAsc = ref(true)

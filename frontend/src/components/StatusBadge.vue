@@ -1,5 +1,5 @@
 <template>
-  <span class="status-pill" :class="`st-${status}`">
+  <span class="status-pill" :class="'st-' + status.toLowerCase()">
     <span v-if="status === 'pending' || status === 'judging'" class="spinner"></span>
     {{ label }}
   </span>

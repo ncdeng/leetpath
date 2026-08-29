@@ -22,7 +22,7 @@
   border: 0.5px solid var(--border-strong);
   padding: 4px 6px 4px 12px;
   border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow);
   margin-bottom: 2px;
 }
 
@@ -184,7 +184,7 @@
 }
 .review-ai-btn:hover {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   box-shadow: var(--shadow-accent);
 }
 

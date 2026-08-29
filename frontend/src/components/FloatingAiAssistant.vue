@@ -227,8 +227,9 @@
               v-model="inputQuestion"
               class="composer-textarea"
               placeholder="输入疑问，可粘贴文字或截图... (Enter 发送)"
-              rows="2"
+              rows="1"
               :disabled="generating"
+              @input="autoResizeComposer"
               @keydown.enter.exact.prevent="onEnterSend"
               @paste="onComposerPaste"
             ></textarea>
@@ -765,6 +766,20 @@ function abort() {
   generating.value = false
 }
 
+function autoResizeComposer() {
+  nextTick(() => {
+    const el = composerEl.value
+    if (!el) return
+    el.style.height = 'auto'
+    const nextH = Math.min(el.scrollHeight, 160)
+    el.style.height = `${Math.max(nextH, 32)}px`
+  })
+}
+
+watch(inputQuestion, () => {
+  autoResizeComposer()
+})
+
 async function onSendPrompt(userPrompt: string, forceRefresh = false) {
   const attached = pendingImages.value.slice()
   if (!userPrompt.trim() && !attached.length) return
@@ -776,6 +791,7 @@ async function onSendPrompt(userPrompt: string, forceRefresh = false) {
   const promptText = userPrompt.trim() || (attached.length ? '（见附图）' : '')
   inputQuestion.value = ''
   pendingImages.value = []
+  autoResizeComposer()
 
   const ctx = assistant.currentContext.value
   const cKey = ctx.contextKey || 'general'
