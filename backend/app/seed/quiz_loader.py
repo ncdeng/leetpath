@@ -69,8 +69,8 @@ def assign_category(bank: str) -> str:
         return "大模型与 Transformer"
     if "算法" in bank or "数学" in bank or "数据结构" in bank or "机考" in bank:
         return "算法与机考"
-    if "半导体" in bank or "多模态" in bank or "工业" in bank:
-        return "多模态与工业场景"
+    if "多模态" in bank or "视觉" in bank or "具身" in bank:
+        return "多模态与具身大模型"
     return "综合理论"
 
 
