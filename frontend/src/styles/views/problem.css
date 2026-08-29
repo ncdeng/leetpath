@@ -82,9 +82,90 @@
 }
 .pane { min-width: 0; }
 .pane-statement {
-  padding: 24px 28px;
+  padding: 18px 22px;
   overflow-y: auto;
-  max-height: calc(100vh - 140px);
+  max-height: calc(100vh - 130px);
+  scroll-behavior: smooth;
+}
+
+.pane-statement .statement-title {
+  font-size: 20px;
+  font-weight: 700;
+  margin: 4px 0 6px;
+  letter-spacing: -0.01em;
+}
+
+.pane-statement .problem-meta {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin: 6px 0 8px;
+}
+
+.pane-statement .problem-limits {
+  font-size: 11.5px;
+  color: var(--text-faint);
+  font-family: var(--mono);
+  margin-bottom: 14px;
+}
+
+/* 题面 Markdown 精细收敛排版（力扣官方紧凑体验，消除巨大标题与大留白） */
+.pane-statement .markdown-body {
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--text);
+}
+
+.pane-statement .markdown-body p {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+
+.pane-statement .markdown-body h1,
+.pane-statement .markdown-body h2,
+.pane-statement .markdown-body h3,
+.pane-statement .markdown-body h4 {
+  font-family: var(--sans) !important;
+  font-size: 14.5px !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.01em;
+  margin: 16px 0 6px !important;
+  color: var(--text);
+}
+
+.pane-statement .markdown-body h2:first-child,
+.pane-statement .markdown-body h3:first-child {
+  margin-top: 0 !important;
+}
+
+.pane-statement .markdown-body pre {
+  background: var(--surface-2);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  margin: 6px 0 14px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.pane-statement .markdown-body code {
+  font-size: 12.5px;
+  padding: 2px 6px;
+  background: var(--surface-2);
+  border-radius: 4px;
+  border: 0.5px solid var(--border);
+}
+
+.pane-statement .markdown-body ul,
+.pane-statement .markdown-body ol {
+  padding-left: 20px;
+  margin: 6px 0 10px;
+  font-size: 13.5px;
+}
+
+.pane-statement .markdown-body li {
+  margin: 3px 0;
 }
 .pane-right {
   display: flex;

@@ -58,7 +58,7 @@
         :style="isDesktop ? { gridTemplateColumns: `${splitRatio}% 6px calc(${100 - splitRatio}% - 6px)` } : {}"
       >
         <!-- 左侧面板：题面 / 题解 -->
-        <section class="pane pane-statement card statement" v-show="isDesktop || tab === 'statement' || tab === 'solution'">
+        <section ref="statementPaneRef" class="pane pane-statement card statement" v-show="isDesktop || tab === 'statement' || tab === 'solution'">
           <!-- 桌面端左面板 Tab（题面 / 题解思路） -->
           <div class="pane-tab-bar" v-if="isDesktop">
             <button class="pane-tab" :class="{ active: leftPaneTab === 'statement' }" @click="leftPaneTab = 'statement'">
@@ -280,6 +280,7 @@ const saveHint = ref('')
 const history = ref<Submission[]>([])
 const tab = ref<'statement' | 'solution' | 'code' | 'result'>('statement')
 const leftPaneTab = ref<'statement' | 'solution'>('statement')
+const statementPaneRef = ref<HTMLElement | null>(null)
 const isDesktop = ref(window.innerWidth >= 1024)
 const isZen = ref(false)
 
@@ -807,6 +808,7 @@ async function loadAll(requestedSlug: string) {
   } finally {
     if (pageGeneration.isCurrent(generation) && slug.value === requestedSlug) {
       loading.value = false
+      if (statementPaneRef.value) statementPaneRef.value.scrollTop = 0
     }
   }
 }
