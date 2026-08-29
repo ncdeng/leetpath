@@ -25,16 +25,16 @@
     <div class="oncall-tabs-wrap">
       <div class="segmented oncall-tabs">
         <button :class="{ active: currentTab === 'study' }" @click="currentTab = 'study'">
-          📖 逐题沉浸学习 (Study Deck)
+          <AppIcon name="cards" :size="15" /> 逐题沉浸学习
         </button>
         <button :class="{ active: currentTab === 'notes' }" @click="currentTab = 'notes'">
-          📋 架构全景与 60s 话术
+          <AppIcon name="book" :size="15" /> 架构全景与 60s 话术
         </button>
         <button :class="{ active: currentTab === 'questions' }" @click="currentTab = 'questions'">
-          🎯 63 道真题检索专栏
+          <AppIcon name="list" :size="15" /> 63 道真题专栏
         </button>
         <button :class="{ active: currentTab === 'mock' }" @click="currentTab = 'mock'">
-          🤖 AI 面试官模拟实战
+          <AppIcon name="sparkle" :size="15" /> AI 模拟面试实战
         </button>
       </div>
     </div>
@@ -142,7 +142,7 @@
                 <AppIcon name="refresh" :size="13" /> 翻回正面
               </button>
               <button class="btn btn-sm btn-primary" @click="openAiTutor(currentQ!)">
-                <AppIcon name="robot" :size="14" /> 追问 AI 导师
+                <AppIcon name="sparkle" :size="14" /> 追问 AI 导师
               </button>
             </div>
           </div>
@@ -166,13 +166,13 @@
             class="btn btn-sm btn-ghost"
             @click="markForgot"
           >
-            ❌ 没记住 (1)
+            没记住 (1)
           </button>
           <button
             class="btn btn-sm btn-remember"
             @click="markRemembered"
           >
-            ✅ 记住了 (2)
+            记住了 (2)
           </button>
           <button
             class="btn btn-sm"
@@ -198,7 +198,7 @@
       <div class="card bp-card">
         <h2><AppIcon name="sparkles" :size="20" /> 60 秒口头项目介绍模板（面试必背）</h2>
         <div class="bp-pitch-box">
-          <div class="bp-pitch-title">🎯 标准 60s 口述版本：</div>
+          <div class="bp-pitch-title">标准 60s 口述版本：</div>
           “我在业余时间<strong>从 0 到 1 独立设计并落地了一套 OnCall 智能值班与故障排查 Agent 系统</strong>。痛点在于此前上游业务与开发同事经常遇到同一类报错重复来问，翻文档成本高，耗费大量时间打杂。因此我利用 <strong>FastAPI + Eino / Spring-AI-Alibaba 工作流</strong> 构建了智能值班助手：接入腾讯云日志检索、动态错误码匹配与基于向量数据库的 RAG 知识库检索，自动给出故障诊断报告与修复脚本。<br/><br/>
           核心难点主要攻克了三点：<strong>第一是日志防爆上下文</strong>，通过滑动窗口 + 错误行特征摘要将 Token 开销降低了 60% 以上；<strong>第二是意图识别分发与 Multi-Agent 编排</strong>，支持根据报错类型路由到排障 Agent 或文档检索 Agent；<strong>第三是针对 Agent Tool 调用的容错与降级兜底机制</strong>，即使模型产生幻觉也能保证服务稳定可用。”
         </div>
@@ -209,7 +209,7 @@
         <h2><AppIcon name="book" :size="20" /> 系统架构全景与技术选型对比</h2>
         <div class="bp-grid-2col">
           <div class="bp-subcard">
-            <h3>⚡ 核心技术选型</h3>
+            <h3>核心技术选型</h3>
             <ul>
               <li><strong>Agent 框架</strong>：选用轻量高性能工作流（Eino / Spring-AI-Alibaba），摒弃冗余臃肿的 LangChain，调用链更可控、调试更直观。</li>
               <li><strong>知识库检索 (RAG)</strong>：向量库（Milvus）+ 密集向量检索，Top-K 精准召回排障 Sop 文档。</li>
@@ -219,7 +219,7 @@
           </div>
 
           <div class="bp-subcard">
-            <h3>🔥 核心技术难点与避坑点</h3>
+            <h3>核心技术难点与避坑点</h3>
             <ul>
               <li><strong>日志上下文防爆</strong>：长日志严禁直接丢进 Prompt。先通过正则提取堆栈关节点，再由轻量模型做行级摘要压缩。</li>
               <li><strong>Prompt 注意力衰减治理</strong>：遵循 <code>System Prompt ➔ 历史对话摘要 ➔ 最近两轮上下文</code> 的物理顺序，防止因中间上下文迷失（Lost in the Middle）导致意图识别失真。</li>
@@ -304,14 +304,14 @@
           <div v-if="expandedIds.has(q.id)" class="qdeck-body">
             <div class="qdeck-analysis-box" v-if="q.analysis">
               <div class="qdeck-analysis-title">
-                <AppIcon name="book" :size="14" /> 💡 标准答案与面试作答要点：
+                <AppIcon name="book" :size="14" /> 标准答案与面试作答要点：
               </div>
               <div class="markdown-body" v-html="renderMd(q.analysis)"></div>
             </div>
 
             <div class="qdeck-actions">
               <button class="btn btn-xs btn-primary" @click="openAiTutor(q)">
-                <AppIcon name="robot" :size="13" /> 追问 AI 面试官
+                <AppIcon name="sparkle" :size="13" /> 追问 AI 面试官
               </button>
               <RouterLink
                 class="btn btn-xs btn-ghost"
@@ -329,7 +329,7 @@
     <section v-else-if="currentTab === 'mock'" class="mock-grid">
       <div class="mock-card">
         <div>
-          <h3><AppIcon name="robot" :size="18" /> 字节一面：0 到 1 架构与技术选型深挖</h3>
+          <h3><AppIcon name="sparkle" :size="16" /> 字节一面：0 到 1 架构与技术选型深挖</h3>
           <p>“请你从 0 到 1 介绍你的 OnCall 智能值班助手项目，为什么选 Eino / Spring-AI 而不是 LangChain？你们的意图识别和工具调用是怎么编排的？”</p>
         </div>
         <button class="btn btn-primary" @click="startMock('byte_arch')">
@@ -339,7 +339,7 @@
 
       <div class="mock-card">
         <div>
-          <h3><AppIcon name="shield" :size="18" /> 美团高频：日志防爆上下文与长对话管理</h3>
+          <h3><AppIcon name="shield" :size="16" /> 美团高频：日志防爆上下文与长对话管理</h3>
           <p>“真实业务场景下日志量非常大，动辄几十兆，你是怎么保证调用 LLM 时上下文不被撑爆的？Prompt 结构中 System/History/Current 顺序如何安排？”</p>
         </div>
         <button class="btn btn-primary" @click="startMock('meituan_log')">
@@ -349,7 +349,7 @@
 
       <div class="mock-card">
         <div>
-          <h3><AppIcon name="sparkles" :size="18" /> 阿里一面：Agentic RAG 与幻觉抑制</h3>
+          <h3><AppIcon name="sparkle" :size="16" /> 阿里一面：Agentic RAG 与幻觉抑制</h3>
           <p>“如果排障 Sop 知识库召回的答案不准确，或者大模型产生了幻觉给出了错误的运维命令，你的系统有哪些拦截与自愈机制？”</p>
         </div>
         <button class="btn btn-primary" @click="startMock('ali_rag')">
@@ -359,7 +359,7 @@
 
       <div class="mock-card">
         <div>
-          <h3><AppIcon name="fire" :size="18" /> 压力面：项目指标 TPM 与技术深度挑刺</h3>
+          <h3><AppIcon name="flame" :size="16" /> 压力面：项目指标 TPM 与技术深度挑刺</h3>
           <p>“你们这个项目的并发 TPM 是多少？看起来方案都是业界现成的，有没有真正比较深入的技术突破点？为什么没做多租户与 Redis 缓存？”</p>
         </div>
         <button class="btn btn-primary" @click="startMock('stress_test')">

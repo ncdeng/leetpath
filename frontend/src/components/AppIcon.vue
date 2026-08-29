@@ -25,8 +25,9 @@
     <template v-else-if="name === 'sun'"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" /></template>
     <template v-else-if="name === 'moon'"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z" /></template>
     <template v-else-if="name === 'leaf'"><path d="M11 20A7 7 0 0 1 4 13c0-4 3-8 9-10 4-1.4 7-1 7-1s.5 3-1 7c-2 6-5 9-8 11Z" /><path d="M4 21c4-6 8-9 12-11" /></template>
-    <template v-else-if="name === 'sparkle'"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1" transform="scale(0.9) translate(1.3 1.3)" /></template>
-    <template v-else-if="name === 'robot'"><rect x="4" y="8" width="16" height="12" rx="2" /><path d="M12 8V4M8 4h8" /><circle cx="9" cy="13" r="1" fill="currentColor" /><circle cx="15" cy="13" r="1" fill="currentColor" /><path d="M9 17h6" /></template>
+    <template v-else-if="name === 'sparkle' || name === 'sparkles'"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3L12 3Z" /><path d="M19 3v4M17 5h4" /><path d="M5 19v2M4 20h2" /></template>
+    <template v-else-if="name === 'shield'"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></template>
+    <template v-else-if="name === 'robot'"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3L12 3Z" /><path d="M19 3v4M17 5h4" /></template>
     <!-- 通用 -->
     <template v-else-if="name === 'chevron-right'"><path d="m9 18 6-6-6-6" /></template>
     <template v-else-if="name === 'chevron-left'"><path d="m15 18-6-6 6-6" /></template>
@@ -44,7 +45,7 @@
     <template v-else-if="name === 'copy'"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></template>
     <template v-else-if="name === 'play'"><path d="m6 4 14 8-14 8V4Z" /></template>
     <template v-else-if="name === 'send'"><path d="m22 2-7 20-4-9-9-4 20-7Z" /><path d="M22 2 11 13" /></template>
-    <template v-else-if="name === 'flame'"><path d="M12 22c4.4 0 7-2.8 7-6.5 0-3-2-5-3.5-7C14 6.5 13 4.5 13 2c-3 2-5 4.5-5 8 0 1 .1 2 .5 3C7.5 12 6 11 6 9c-1.2 1.8-1 4-.9 5.1C5.6 18.5 8 22 12 22Z" /></template>
+    <template v-else-if="name === 'flame' || name === 'fire'"><path d="M12 22c4.4 0 7-2.8 7-6.5 0-3-2-5-3.5-7C14 6.5 13 4.5 13 2c-3 2-5 4.5-5 8 0 1 .1 2 .5 3C7.5 12 6 11 6 9c-1.2 1.8-1 4-.9 5.1C5.6 18.5 8 22 12 22Z" /></template>
     <template v-else-if="name === 'dice'"><rect x="3" y="3" width="18" height="18" rx="4" /><circle cx="8.5" cy="8.5" r="1.2" fill="currentColor" stroke="none" /><circle cx="15.5" cy="15.5" r="1.2" fill="currentColor" stroke="none" /><circle cx="15.5" cy="8.5" r="1.2" fill="currentColor" stroke="none" /><circle cx="8.5" cy="15.5" r="1.2" fill="currentColor" stroke="none" /></template>
     <template v-else><circle cx="12" cy="12" r="9" /></template>
   </svg>
