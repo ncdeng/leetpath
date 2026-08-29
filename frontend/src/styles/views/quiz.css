@@ -336,7 +336,7 @@
 }
 .quiz-option-btn.opt-selected .opt-prefix {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 .quiz-option-btn.opt-correct {
   border-color: var(--green);
@@ -866,16 +866,16 @@
 }
 .bubble-user .bubble-avatar {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 .bubble-body {
   max-width: 86%;
   min-width: 0;
 }
-/* 用户气泡：accent 底白字 */
+/* 用户气泡：accent 底使用主题对比色 */
 .bubble-user .bubble-body {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   padding: 10px 14px;
   border-radius: var(--radius);
   border-top-right-radius: 4px;
@@ -887,18 +887,18 @@
   border-radius: var(--radius);
   border-top-left-radius: 4px;
 }
-/* 用户气泡内 markdown 反白（base .markdown-body 默认 var(--text)，需覆盖） */
+/* 用户气泡内 Markdown 跟随强调色前景（base 默认 var(--text)，需覆盖） */
 .bubble-user .bubble-body .markdown-body {
-  color: #fff;
+  color: var(--on-accent);
 }
 .bubble-user .bubble-body .markdown-body code {
-  /* 反白代码片：base 无此语义变量，用白色透明底 */
+  /* 代码片使用半透明浅底，文字继续跟随强调色前景。 */
   background: rgba(255, 255, 255, 0.18);
-  color: #fff;
+  color: var(--on-accent);
 }
 .bubble-user .bubble-body .markdown-body a {
-  color: #fff;
-  text-decoration-color: rgba(255, 255, 255, 0.5);
+  color: var(--on-accent);
+  text-decoration-color: var(--on-accent);
 }
 .bubble-header {
   display: flex;

@@ -11,7 +11,8 @@
 
    变量契约（勿改名，Editor/各视图均依赖）：
    --bg --surface{,-2,-3} --border{,-strong} --text{,-dim,-faint} --muted
-   --accent{,-2,-hover,-soft,-border} --ink --ink-hover --grad --grad-text
+   --accent{,-2,-hover,-soft,-border} --on-accent --on-accent-hover
+   --ink --ink-hover --grad --grad-text
    --green/-soft --red/-soft --amber/-soft --purple/-soft
    --mono --sans --serif(=display 别名) --radius --radius-sm --radius-lg
    --shadow --shadow-lg --shadow-accent --topbar-h --bottom-nav-h
@@ -44,6 +45,8 @@
   --accent: #bd3f0e;
   --accent-2: #9e3209;
   --accent-hover: #a03308;
+  --on-accent: #ffffff;
+  --on-accent-hover: #ffffff;
   --accent-soft: rgba(189, 63, 14, 0.09);
   --accent-border: rgba(189, 63, 14, 0.32);
   --ink: #211d15;
@@ -104,6 +107,8 @@
   --accent: #e8601f;
   --accent-2: #f08a4b;
   --accent-hover: #f07a35;
+  --on-accent: #111111;
+  --on-accent-hover: #111111;
   --accent-soft: rgba(232, 96, 31, 0.14);
   --accent-border: rgba(232, 96, 31, 0.4);
   --ink: #eee6d6;
@@ -154,6 +159,8 @@
   --accent: #56718c;
   --accent-2: #7b93ac;
   --accent-hover: #47617c;
+  --on-accent: #ffffff;
+  --on-accent-hover: #ffffff;
   --accent-soft: rgba(86, 113, 140, 0.11);
   --accent-border: rgba(86, 113, 140, 0.34);
   --ink: #28303c;
@@ -203,6 +210,8 @@
   --accent: #97795a;
   --accent-2: #a8896a;
   --accent-hover: #7d6244;
+  --on-accent: #111111;
+  --on-accent-hover: #ffffff;
   --accent-soft: rgba(151, 121, 90, 0.11);
   --accent-border: rgba(151, 121, 90, 0.32);
   --ink: #38302a;
@@ -252,6 +261,8 @@
   --accent: #00f2fe;
   --accent-2: #c084fc;
   --accent-hover: #38bdf8;
+  --on-accent: #0a0f14;
+  --on-accent-hover: #0a0f14;
   --accent-soft: rgba(0, 242, 254, 0.14);
   --accent-border: rgba(0, 242, 254, 0.35);
   --ink: #00f2fe;
@@ -313,6 +324,8 @@
   --accent: #2e7d32;
   --accent-2: #558b2f;
   --accent-hover: #1b5e20;
+  --on-accent: #ffffff;
+  --on-accent-hover: #ffffff;
   --accent-soft: rgba(46, 125, 50, 0.1);
   --accent-border: rgba(46, 125, 50, 0.3);
   --ink: #1e3322;
@@ -368,6 +381,8 @@
   --accent: #00f0ff;
   --accent-2: #38bdf8;
   --accent-hover: #00d2df;
+  --on-accent: #0a0f14;
+  --on-accent-hover: #0a0f14;
   --accent-soft: rgba(0, 240, 255, 0.12);
   --accent-border: rgba(0, 240, 255, 0.45);
   --ink: #e2e8f0;
@@ -422,6 +437,8 @@
   --accent: #0038ff;
   --accent-2: #2554ff;
   --accent-hover: #002ed4;
+  --on-accent: #ffffff;
+  --on-accent-hover: #ffffff;
   --accent-soft: rgba(0, 56, 255, 0.09);
   --accent-border: rgba(0, 56, 255, 0.4);
   --ink: #000000;
@@ -480,6 +497,8 @@
   --accent: #ff4000;
   --accent-2: #ff6a33;
   --accent-hover: #e53a00;
+  --on-accent: #111111;
+  --on-accent-hover: #0a0f14;
   --accent-soft: rgba(255, 64, 0, 0.08);
   --accent-border: rgba(255, 64, 0, 0.35);
   --ink: #181611;
@@ -538,6 +557,8 @@
   --accent: #ff4000;
   --accent-2: #ff6a33;
   --accent-hover: #e53a00;
+  --on-accent: #111111;
+  --on-accent-hover: #0a0f14;
   --accent-soft: rgba(255, 64, 0, 0.14);
   --accent-border: rgba(255, 64, 0, 0.4);
   --ink: #f4f4f6;
@@ -844,14 +865,14 @@ code, pre, .mono { font-family: var(--mono); }
 
 .btn-primary {
   background: var(--accent);
-  color: #fdf8ee;
+  color: var(--on-accent);
   border-color: var(--accent);
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.1);
 }
 .btn-primary:hover {
   background: var(--accent-hover);
   border-color: var(--accent-hover);
-  color: #fdf8ee;
+  color: var(--on-accent-hover);
   box-shadow: var(--shadow-accent);
 }
 
@@ -919,6 +940,17 @@ code, pre, .mono { font-family: var(--mono); }
 .badge-medium { color: var(--amber); }
 .badge-hard { color: var(--red); }
 .badge-source { color: var(--accent); }
+.badge-mianjing {
+  color: var(--amber);
+  background: var(--amber-soft);
+  border: 1px solid var(--amber);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+}
 .badge-tag { color: var(--text-dim); }
 .badge-big { color: var(--accent); border-width: 1.5px; }
 .badge-mid { color: var(--purple); }
@@ -941,6 +973,7 @@ code, pre, .mono { font-family: var(--mono); }
 .status-badge.st-mle, .status-pill.st-mle { color: var(--purple); background: var(--purple-soft); }
 .status-badge.st-ce, .status-pill.st-ce { color: var(--text-dim); background: var(--surface-2); }
 .status-badge.st-re, .status-pill.st-re { color: var(--red); background: var(--red-soft); }
+.status-badge.st-ie, .status-pill.st-ie { color: var(--text-dim); background: var(--surface-2); }
 .status-badge.st-pending, .status-pill.st-pending,
 .status-badge.st-judging, .status-pill.st-judging { color: var(--accent); background: var(--accent-soft); }
 

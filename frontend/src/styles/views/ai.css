@@ -303,13 +303,13 @@
   display: flex;
   gap: 8px;
   overflow-x: auto;
-  padding-bottom: 6px;
-  scrollbar-width: thin;
+  padding-bottom: 2px;
+  scrollbar-width: none; /* 隐藏原生滚动条 */
+  -ms-overflow-style: none;
+  -webkit-overflow-scrolling: touch;
 }
-.f-chips-track::-webkit-scrollbar { height: 3px; }
-.f-chips-track::-webkit-scrollbar-thumb {
-  background: var(--border-strong);
-  border-radius: 3px;
+.f-chips-track::-webkit-scrollbar {
+  display: none; /* 隐藏横向滚动条，移动端滑动手感更清爽 */
 }
 .chip-pill {
   display: inline-flex;
@@ -394,10 +394,10 @@
   overflow-wrap: break-word;
   word-break: break-word;
 }
-/* 用户气泡：accent 底白字，右对齐，右下小角 */
+/* 用户气泡：accent 底使用主题对比色，右对齐，右下小角 */
 .role-user .msg-card {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   padding: 10px 14px;
   border-radius: 16px;
   border-bottom-right-radius: 4px;
@@ -422,7 +422,7 @@
   font-weight: 600;
   color: var(--text-faint);
 }
-.role-user .msg-sender { color: rgba(255, 255, 255, 0.75); } /* accent 底上的次级白 */
+.role-user .msg-sender { color: var(--on-accent); }
 .msg-actions {
   display: flex;
   align-items: center;
@@ -471,7 +471,7 @@
   overflow-wrap: break-word;
   word-break: break-word;
 }
-.floating-window .role-user .msg-markdown { color: #fff; }
+.floating-window .role-user .msg-markdown { color: var(--on-accent); }
 .floating-window .msg-markdown pre {
   max-width: 100%;
   box-sizing: border-box;
@@ -490,7 +490,7 @@
 .floating-window .role-user .msg-markdown pre {
   background: rgba(255, 255, 255, 0.16);
   border-color: transparent;
-  color: #fff;
+  color: var(--on-accent);
 }
 .floating-window .msg-markdown code {
   font-family: var(--mono);
@@ -506,7 +506,7 @@
 }
 .floating-window .role-user .msg-markdown code {
   background: rgba(255, 255, 255, 0.22);
-  color: #fff;
+  color: var(--on-accent);
 }
 .floating-window .msg-markdown p,
 .floating-window .msg-markdown ul,
@@ -527,8 +527,8 @@
   color: var(--text-dim);
 }
 .floating-window .role-user .msg-markdown blockquote {
-  border-left-color: rgba(255, 255, 255, 0.45);
-  color: rgba(255, 255, 255, 0.85);
+  border-left-color: var(--on-accent);
+  color: var(--on-accent);
 }
 .floating-window .msg-markdown h1,
 .floating-window .msg-markdown h2,
@@ -615,14 +615,23 @@
   background: transparent;
   color: var(--text);
   font-family: inherit;
-  font-size: 16px; /* ≥16px 避免 iOS 聚焦自动放大 */
+  font-size: 15.5px;
   line-height: 1.5;
   resize: none;
   outline: none;
-  padding: 2px;
+  padding: 4px 2px;
   user-select: text;
   -webkit-user-select: text;
   touch-action: manipulation;
+  /* 软换行与自动折行 */
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  min-height: 30px;
+  max-height: 150px;
+  overflow-y: auto;
+  scrollbar-width: thin;
 }
 .composer-textarea::placeholder { color: var(--text-faint); }
 
@@ -725,7 +734,7 @@
   border-radius: 50%;
   border: none;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -735,6 +744,7 @@
 }
 .btn-send:hover:not(:disabled) {
   background: var(--accent-hover);
+  color: var(--on-accent-hover);
   transform: translateY(-1px);
 }
 .btn-send:disabled {

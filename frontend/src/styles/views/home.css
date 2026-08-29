@@ -340,7 +340,7 @@
 .matrix-day-box.is-today {
   background: var(--accent);
   border-color: transparent;
-  color: #fdf8ee;
+  color: var(--on-accent);
   box-shadow: var(--shadow-accent);
   font-weight: 700;
 }
@@ -624,7 +624,7 @@
 .pill-btn.active {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fdf8ee;
+  color: var(--on-accent);
 }
 .pill-input-wrap {
   display: inline-flex;
